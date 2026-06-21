@@ -14,80 +14,91 @@ listing, and merging worktrees across multiple git repositories.
 
 ---
 
+## File structure
+
+```
+~/.config/worktree/
+  worktree.zsh        # Shell functions — source this in ~/.zshrc
+  config.zsh          # Global settings (IDE command)
+  projects.conf       # Project registry (one project per line)
+  hooks/
+    <project>-post-create.sh   # Runs after worktree creation (auto-scaffolded)
+    <project>-pre-delete.sh    # Runs before worktree deletion (auto-scaffolded)
+```
+
+---
+
 ## Step 1: Quick Install
 
 Run this one-liner to download and install everything automatically:
 
 ```bash
-bash <(curl -fsSL https://gist.githubusercontent.com/stevebrownlee-ai/93621e911a15a625e17c580ce9f1abbf/raw/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/stevebrownlee-ai/worktree/main/install.sh)
 ```
 
-The script creates:
-- `~/.config/worktree/worktree.zsh`
-- `~/.config/worktree/config.zsh` — global settings
-- `~/.config/worktree/projects.conf` — project registry
-- `~/.config/worktree/hooks/` — directory for hook scripts
+The script creates `~/.config/worktree/worktree.zsh`, a starter `config.zsh`, a starter `projects.conf`, and the `hooks/` directory.
+
+Or clone the repo and run the installer directly:
+
+```bash
+git clone https://github.com/stevebrownlee-ai/worktree.git
+bash worktree/install.sh
+```
 
 
 ## Step 2 — Configure global settings
 
-Open `~/.config/worktree/config.zsh`:
+Open `~/.config/worktree/config.zsh` and set your IDE command:
 
 ```zsh
-# Command used to open a worktree directory in your IDE
 # e.g. "code", "cursor", "antigravity-ide", "zed"
 DEFAULT_IDE_CMD="code"
 ```
 
 
-## Step 3 — Register your projects
+## Step 3 — Load `worktree.zsh` in your shell
 
-Either use the interactive menu (recommended) or edit `projects.conf` directly.
-
-### Option A: Interactive registration (recommended)
-
-```zsh
-worktree
-# Choose: Register a new project
-```
-
-The tool will prompt for your project name, repo path, and worktrees directory,
-then **automatically scaffold both hook scripts** — no further setup needed.
-
-### Option B: Manual `projects.conf` entry
-
-```
-# ~/.config/worktree/projects.conf
-# Format: project_name|repo_dir|worktrees_dir|post_create_hook|pre_delete_hook
-myapp|/path/to/myapp|/path/to/myapp.worktrees|~/.config/worktree/hooks/myapp-post-create.sh|~/.config/worktree/hooks/myapp-pre-delete.sh
-```
-
-Then create and populate the hook scripts manually (see [Hook Scripts](#hook-scripts) below).
-
-
-## Step 4 — Load `worktree.zsh` in your shell
-
-Add this single line to your `~/.zshrc`:
+Add this line to your `~/.zshrc`:
 
 ```zsh
 source "$HOME/.config/worktree/worktree.zsh"
 ```
 
-Then reload your shell:
+Then reload:
 
 ```zsh
 source ~/.zshrc
 ```
 
 
-## Step 5 — Run the manager
+## Step 4 — Run the manager
 
 ```zsh
 worktree
 ```
 
-If you have multiple projects registered, you'll be prompted to select one first.
-If only one project is registered, it is selected automatically.
+### First launch — project picker
+
+On first launch (or when switching projects), you'll see the project picker:
+
+```
+Select a project:
+  1)  myapp   /path/to/myapp
+  2)  Register a new project
+
+Enter choice:
+```
+
+Choose **"Register a new project"** to add your first project. The tool will prompt for:
+- Project name
+- Repo directory (must be an existing git repo)
+- Worktrees directory (defaults to `<repo>.worktrees`)
+
+Both hook scripts are **automatically scaffolded** — no manual setup needed.
+
+If only one project is registered, it is selected automatically and the picker is skipped.
+
+### Main menu
 
 ```
 Git Worktree Manager [myapp]
@@ -98,12 +109,11 @@ Git Worktree Manager [myapp]
   4) List all worktrees
   5) Merge main into a worktree branch
   6) Switch project
-  7) Register a new project
 
   q) Quit
 ```
 
-> **Note:** "Switch project" is hidden when only one project is registered.
+> **Note:** Option 6 "Switch project" is only shown when 2+ projects are registered. The project picker also includes "Register a new project" as the last option.
 
 ---
 
@@ -116,16 +126,17 @@ Git Worktree Manager [myapp]
 | 3 | Delete | Runs the pre-delete hook (blocks if hook exits non-zero), then removes the worktree |
 | 4 | List   | Displays all worktrees in an aligned table (NAME / SHA-1 / BRANCH) |
 | 5 | Merge  | Pulls `main` in the main repo, then merges it into the selected worktree's branch |
-| 6 | Switch | Re-prompts project selection (only shown with 2+ projects) |
-| 7 | Register | Adds a new project and scaffolds hook scripts automatically |
+| 6 | Switch | Re-opens the project picker (only shown with 2+ projects) |
 
 ---
 
 ## Hook Scripts
 
+Hook scripts live in `~/.config/worktree/hooks/` and are named `<project>-post-create.sh` and `<project>-pre-delete.sh`. They are created automatically when you register a project.
+
 ### Post-Create Hook
 
-Runs **after** `git worktree add`. Non-blocking — a non-zero exit prints a warning but does not abort.
+Runs **after** `git worktree add`. **Non-blocking** — a non-zero exit prints a warning but does not abort.
 
 **Arguments:**
 
@@ -134,7 +145,7 @@ Runs **after** `git worktree add`. Non-blocking — a non-zero exit prints a war
 | `$1` | Absolute path to the new worktree directory |
 | `$2` | Absolute path to the main repo directory |
 
-**Example** — copy files and install deps:
+The scaffolded hook is a skeleton. Edit it to add your project's setup steps:
 
 ```bash
 #!/usr/bin/env bash
@@ -153,12 +164,11 @@ cp -r "$REPO_DIR/backend/deps" "$WT_PATH/backend/deps"
 
 ### Pre-Delete Hook
 
-Runs **before** `git worktree remove`. **Blocking** — a non-zero exit aborts the deletion.
+Runs **before** `git worktree remove`. **Blocking** — a non-zero exit **aborts the deletion**.
 
 **Arguments:** same as post-create (`$1` = worktree path, `$2` = repo dir)
 
-The auto-scaffolded pre-delete hook checks for uncommitted changes, untracked files,
-and unpushed commits:
+The scaffolded pre-delete hook is pre-populated with safety checks:
 
 ```bash
 #!/usr/bin/env bash
@@ -169,6 +179,13 @@ WT_PATH="$1"
 if ! git -C "$WT_PATH" diff --quiet || ! git -C "$WT_PATH" diff --cached --quiet; then
   echo "✗ Uncommitted changes in $WT_PATH"
   git -C "$WT_PATH" status --short
+  exit 1
+fi
+
+# Untracked files
+UNTRACKED=$(git -C "$WT_PATH" ls-files --others --exclude-standard)
+if [[ -n "$UNTRACKED" ]]; then
+  echo "✗ Untracked files in $WT_PATH"
   exit 1
 fi
 
@@ -200,13 +217,20 @@ exit 0
 
 ### `projects.conf` — project registry
 
+Pipe-delimited, one project per line. Comments (`#`) and blank lines are ignored.
+
+```
+# project_name|repo_dir|worktrees_dir|post_create_hook|pre_delete_hook
+myapp|/path/to/myapp|/path/to/myapp.worktrees|~/.config/worktree/hooks/myapp-post-create.sh|~/.config/worktree/hooks/myapp-pre-delete.sh
+```
+
 | Field | Required | Description |
 |-------|----------|-------------|
 | `project_name` | ✅ | Short identifier shown in the project picker |
 | `repo_dir` | ✅ | Absolute path to the main git repo |
 | `worktrees_dir` | ✅ | Directory where new worktrees are created |
-| `post_create_hook` | optional | Path to post-create hook script |
-| `pre_delete_hook` | optional | Path to pre-delete hook script |
+| `post_create_hook` | optional | Path to post-create hook script. Leave empty to skip. |
+| `pre_delete_hook` | optional | Path to pre-delete hook script. Leave empty to skip. |
 
 ---
 
@@ -215,14 +239,14 @@ exit 0
 **`✗ Project registry not found`**
 → Create `~/.config/worktree/projects.conf` or run `bash install.sh`.
 
-**`✗ No valid projects found`**
-→ Check that `repo_dir` entries in `projects.conf` exist and contain a `.git` directory.
+**`✗ No valid projects found` / `✗ No projects registered yet`**
+→ Use the project picker to register a project, or check that `repo_dir` entries in `projects.conf` exist and contain a `.git` directory.
 
 **`⚠ Post-create hook not found`**
-→ The hook path in `projects.conf` doesn't exist. Create the file or update the path.
+→ The hook path in `projects.conf` doesn't exist. Re-register the project or create the file manually.
 
 **`✗ Pre-delete hook blocked deletion`**
-→ The pre-delete hook exited non-zero. Read its output — typically uncommitted changes or unpushed commits. Resolve them, then retry deletion.
+→ The pre-delete hook exited non-zero. Read its output — typically uncommitted changes, untracked files, or unpushed commits. Resolve them, then retry deletion.
 
 **Merge conflicts after option 5**
 → `cd` into the worktree path shown and resolve conflicts with your normal git workflow.

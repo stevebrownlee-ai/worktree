@@ -14,7 +14,8 @@
 set -e
 
 INSTALL_DIR="$HOME/.config/worktree"
-WORKTREE_ZSH_URL="https://gist.githubusercontent.com/stevebrownlee-ai/93621e911a15a625e17c580ce9f1abbf/raw/c519e778afe936ff523953adf7a7109599ef4542/worktree.zsh"
+REPO_BASE_URL="https://raw.githubusercontent.com/stevebrownlee-ai/worktree/main"
+WORKTREE_ZSH_URL="$REPO_BASE_URL/worktree.zsh"
 
 echo ""
 echo "Git Worktree Manager — Installer"
