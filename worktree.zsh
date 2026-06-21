@@ -4,7 +4,62 @@
 # Global config:   ~/.config/worktree/config.zsh
 # Project registry: ~/.config/worktree/projects.conf
 
-# ── Internal state ─────────────────────────────────────────────────────────────
+# ── Colors ─────────────────────────────────────────────────────────────────
+typeset -g _wt_red=$'\e[31m'   _wt_green=$'\e[32m'  _wt_yellow=$'\e[33m'
+typeset -g _wt_blue=$'\e[34m'  _wt_magenta=$'\e[35m' _wt_cyan=$'\e[36m'
+typeset -g _wt_bold=$'\e[1m'   _wt_dim=$'\e[2m'     _wt_reset=$'\e[0m'
+
+# ── Box-drawing helpers ────────────────────────────────────────────────────────
+_wt_visible_len() {
+  setopt localoptions extended_glob
+  local stripped="${1//$'\e'\[[0-9;]#m/}"
+  echo ${#stripped}
+}
+
+_wt_box_top() {
+  local w=$1
+  printf "${_wt_dim}╭%s╮${_wt_reset}\n" "$(printf '─%.0s' {1..$w})"
+}
+
+_wt_box_mid() {
+  local w=$1
+  printf "${_wt_dim}├%s┤${_wt_reset}\n" "$(printf '─%.0s' {1..$w})"
+}
+
+_wt_box_bottom() {
+  local w=$1
+  printf "${_wt_dim}╰%s╯${_wt_reset}\n" "$(printf '─%.0s' {1..$w})"
+}
+
+_wt_box_empty() {
+  local w=$1
+  printf "${_wt_dim}│${_wt_reset}%${w}s${_wt_dim}│${_wt_reset}\n" ""
+}
+
+_wt_box_line() {
+  local w=$1 content="$2"
+  local vlen=$(_wt_visible_len "$content")
+  local pad=$(( w - vlen ))
+  (( pad < 0 )) && pad=0
+  printf "${_wt_dim}│${_wt_reset}%s%${pad}s${_wt_dim}│${_wt_reset}\n" "$content" ""
+}
+
+_wt_banner() {
+  local title="$1" min_w="${2:-40}"
+  local tlen=$(_wt_visible_len "$title")
+  local inner=$(( tlen + 4 ))
+  (( inner < min_w )) && inner=$min_w
+  local trail=$(( inner - tlen - 3 ))
+  printf "${_wt_dim}╭─${_wt_reset} %s ${_wt_dim}%s╮${_wt_reset}\n" "$title" "$(printf '─%.0s' {1..$trail})"
+  printf "${_wt_dim}╰%s╯${_wt_reset}\n" "$(printf '─%.0s' {1..$inner})"
+}
+
+_wt_table_sep() {
+  local w="${1:-50}"
+  printf "  ${_wt_dim}%s${_wt_reset}\n" "$(printf '─%.0s' {1..$w})"
+}
+
+# ── Internal state ─────────────────────────────────────────────────────────
 typeset -ga _WT_PROJECT_NAMES _WT_REPO_DIRS _WT_WORKTREES_DIRS _WT_POST_CREATE_HOOKS _WT_PRE_DELETE_HOOKS
 typeset -g  WT_PROJECT_NAME WT_REPO_DIR WT_WORKTREES_DIR WT_POST_CREATE_HOOK WT_PRE_DELETE_HOOK
 
@@ -12,7 +67,7 @@ typeset -g  WT_PROJECT_NAME WT_REPO_DIR WT_WORKTREES_DIR WT_POST_CREATE_HOOK WT_
 _wt_load_config() {
   local cfg="$HOME/.config/worktree/config.zsh"
   if [[ ! -f "$cfg" ]]; then
-    echo "✗ Worktree config not found: $cfg"
+    echo "${_wt_red}✗${_wt_reset} Worktree config not found: ${_wt_dim}$cfg${_wt_reset}"
     return 1
   fi
   source "$cfg"
@@ -23,7 +78,7 @@ _wt_parse_projects() {
   local conf="${PROJECTS_CONF:-$HOME/.config/worktree/projects.conf}"
 
   if [[ ! -f "$conf" ]]; then
-    echo "✗ Project registry not found: $conf"
+    echo "${_wt_red}✗${_wt_reset} Project registry not found: ${_wt_dim}$conf${_wt_reset}"
     return 1
   fi
 
@@ -44,7 +99,7 @@ _wt_parse_projects() {
     IFS='|' read -rA fields <<< "$line"
 
     if (( ${#fields[@]} < 3 )); then
-      echo "  ⚠ Skipping invalid line $line_num in projects.conf"
+      echo "  ${_wt_yellow}⚠${_wt_reset} Skipping invalid line $line_num in projects.conf"
       continue
     fi
 
@@ -55,12 +110,12 @@ _wt_parse_projects() {
     local pre_delete_hook="${fields[5]:-}"
 
     if [[ ! -d "$repo_dir" ]]; then
-      echo "  ⚠ Skipping $name: repo not found at $repo_dir"
+      echo "  ${_wt_yellow}⚠${_wt_reset} Skipping ${_wt_bold}$name${_wt_reset}: repo not found at ${_wt_dim}$repo_dir${_wt_reset}"
       continue
     fi
 
     if [[ ! -d "$repo_dir/.git" ]]; then
-      echo "  ⚠ Skipping $name: not a git repo at $repo_dir"
+      echo "  ${_wt_yellow}⚠${_wt_reset} Skipping ${_wt_bold}$name${_wt_reset}: not a git repo at ${_wt_dim}$repo_dir${_wt_reset}"
       continue
     fi
 
@@ -72,7 +127,7 @@ _wt_parse_projects() {
   done < "$conf"
 
   if (( ${#_WT_PROJECT_NAMES[@]} == 0 )); then
-    echo "✗ No valid projects found in $conf"
+    echo "${_wt_red}✗${_wt_reset} No valid projects found in ${_wt_dim}$conf${_wt_reset}"
     return 1
   fi
 
@@ -85,7 +140,7 @@ _wt_select_project() {
 
   if (( count == 0 )); then
     # No projects yet — go straight to registration
-    echo "✗ No projects registered yet."
+    echo "${_wt_red}✗${_wt_reset} No projects registered yet."
     echo ""
     register_project
     return $?
@@ -97,52 +152,41 @@ _wt_select_project() {
     WT_WORKTREES_DIR="${_WT_WORKTREES_DIRS[1]}"
     WT_POST_CREATE_HOOK="${_WT_POST_CREATE_HOOKS[1]}"
     WT_PRE_DELETE_HOOK="${_WT_PRE_DELETE_HOOKS[1]}"
-    echo "→ Active project: $WT_PROJECT_NAME"
+    echo "${_wt_cyan}→${_wt_reset} Active project: ${_wt_bold}${_wt_green}$WT_PROJECT_NAME${_wt_reset}"
     return 0
   fi
 
-  # Compute max name width for alignment
-  local max_len=4
+  local -a _proj_choices
   local i
   for (( i = 1; i <= count; i++ )); do
-    (( ${#_WT_PROJECT_NAMES[$i]} > max_len )) && max_len=${#_WT_PROJECT_NAMES[$i]}
+    _proj_choices+=("${_WT_PROJECT_NAMES[$i]}")
   done
-
-  local register_opt=$(( count + 1 ))
-
-  clear
-  echo ""
-  echo "Select a project:"
-  echo "================================"
-  for (( i = 1; i <= count; i++ )); do
-    printf "  %-4s  %-${max_len}s  %s\n" "$i)" "${_WT_PROJECT_NAMES[$i]}" "${_WT_REPO_DIRS[$i]}"
-  done
-  echo ""
-  printf "  %-4s  %s\n" "n)" "Register a new project"
-  echo ""
+  _proj_choices+=("Register a new project")
 
   local selection
-  printf "Enter choice: "
-  read -k 1 selection
-  echo ""
+  selection=$(gum choose --cursor.foreground 6 \
+    --header "Select a project:" "${_proj_choices[@]}")
+  [[ -z "$selection" ]] && return 1
 
-  if [[ "$selection" == "n" ]]; then
+  if [[ "$selection" == "Register a new project" ]]; then
     register_project
     return $?
   fi
 
-  if ! [[ "$selection" =~ ^[0-9]+$ ]] || (( selection < 1 || selection > count )); then
-    echo "Error: invalid selection."
-    return 1
-  fi
+  for (( i = 1; i <= count; i++ )); do
+    if [[ "${_WT_PROJECT_NAMES[$i]}" == "$selection" ]]; then
+      WT_PROJECT_NAME="${_WT_PROJECT_NAMES[$i]}"
+      WT_REPO_DIR="${_WT_REPO_DIRS[$i]}"
+      WT_WORKTREES_DIR="${_WT_WORKTREES_DIRS[$i]}"
+      WT_POST_CREATE_HOOK="${_WT_POST_CREATE_HOOKS[$i]}"
+      WT_PRE_DELETE_HOOK="${_WT_PRE_DELETE_HOOKS[$i]}"
+      echo "${_wt_cyan}→${_wt_reset} Active project: ${_wt_bold}$WT_PROJECT_NAME${_wt_reset}"
+      return 0
+    fi
+  done
 
-  WT_PROJECT_NAME="${_WT_PROJECT_NAMES[$selection]}"
-  WT_REPO_DIR="${_WT_REPO_DIRS[$selection]}"
-  WT_WORKTREES_DIR="${_WT_WORKTREES_DIRS[$selection]}"
-  WT_POST_CREATE_HOOK="${_WT_POST_CREATE_HOOKS[$selection]}"
-  WT_PRE_DELETE_HOOK="${_WT_PRE_DELETE_HOOKS[$selection]}"
-  echo "→ Active project: $WT_PROJECT_NAME"
-  return 0
+  echo "${_wt_red}Error:${_wt_reset} invalid selection."
+  return 1
 }
 
 # ── Run a post-create hook (non-blocking) ──────────────────────────────────────
@@ -154,14 +198,14 @@ _wt_run_post_create_hook() {
   [[ -z "$hook" ]] && return 0
 
   if [[ ! -f "$hook" ]]; then
-    echo "  ⚠ Post-create hook not found: $hook, skipping."
+    echo "  ${_wt_yellow}⚠${_wt_reset} Post-create hook not found: ${_wt_dim}$hook${_wt_reset}, skipping."
     return 0
   fi
 
   if [[ ! -x "$hook" ]]; then
-    echo "  ⚠ Hook not executable, attempting chmod +x..."
+    echo "  ${_wt_yellow}⚠${_wt_reset} Hook not executable, attempting chmod +x..."
     if ! chmod +x "$hook"; then
-      echo "  ⚠ chmod failed, skipping hook."
+      echo "  ${_wt_yellow}⚠${_wt_reset} chmod failed, skipping hook."
       return 0
     fi
   fi
@@ -169,7 +213,7 @@ _wt_run_post_create_hook() {
   "$hook" "$worktree_path" "$repo_dir"
   local exit_code=$?
   if (( exit_code != 0 )); then
-    echo "  ⚠ Post-create hook exited with code $exit_code."
+    echo "  ${_wt_yellow}⚠${_wt_reset} Post-create hook exited with code $exit_code."
   fi
   return 0
 }
@@ -183,14 +227,14 @@ _wt_run_pre_delete_hook() {
   [[ -z "$hook" ]] && return 0
 
   if [[ ! -f "$hook" ]]; then
-    echo "  ⚠ Pre-delete hook not found: $hook, skipping."
+    echo "  ${_wt_yellow}⚠${_wt_reset} Pre-delete hook not found: ${_wt_dim}$hook${_wt_reset}, skipping."
     return 0
   fi
 
   if [[ ! -x "$hook" ]]; then
-    echo "  ⚠ Hook not executable, attempting chmod +x..."
+    echo "  ${_wt_yellow}⚠${_wt_reset} Hook not executable, attempting chmod +x..."
     if ! chmod +x "$hook"; then
-      echo "  ⚠ chmod failed, skipping hook."
+      echo "  ${_wt_yellow}⚠${_wt_reset} chmod failed, skipping hook."
       return 0
     fi
   fi
@@ -198,7 +242,7 @@ _wt_run_pre_delete_hook() {
   "$hook" "$worktree_path" "$repo_dir"
   local exit_code=$?
   if (( exit_code != 0 )); then
-    echo "✗ Pre-delete hook blocked deletion (exit code $exit_code)."
+    echo "${_wt_red}✗${_wt_reset} Pre-delete hook blocked deletion (exit code $exit_code)."
     return 1
   fi
   return 0
@@ -210,20 +254,20 @@ register_project() {
   local hooks_dir="$HOME/.config/worktree/hooks"
 
   echo ""
-  echo "Register New Project"
-  echo "--------------------"
+  gum style --border rounded --border-foreground 240 --padding "0 2" \
+    "${_wt_bold}${_wt_cyan}Register New Project${_wt_reset}"
 
   # ── Project name ──────────────────────────────────────────────
   local project_name
   while true; do
-    printf "Project name: "
-    read project_name
+    project_name=$(gum input --header "Project name" --placeholder "my-project" \
+      --prompt "> " --prompt.foreground 6)
     if [[ -z "$project_name" ]]; then
-      echo "  Error: project name cannot be empty."
+      echo "  ${_wt_red}Error:${_wt_reset} project name cannot be empty."
       continue
     fi
     if [[ "$project_name" == *"|"* ]]; then
-      echo "  ✗ Project name cannot contain '|'."
+      echo "  ${_wt_red}✗${_wt_reset} Project name cannot contain '|'."
       continue
     fi
     # Check for duplicate
@@ -233,7 +277,7 @@ register_project() {
       [[ "$n" == "$project_name" ]] && dup=1 && break
     done
     if (( dup )); then
-      echo "  ✗ Project '$project_name' already registered."
+      echo "  ${_wt_red}✗${_wt_reset} Project ${_wt_bold}'$project_name'${_wt_reset} already registered."
       continue
     fi
     break
@@ -242,28 +286,29 @@ register_project() {
   # ── Repo directory ────────────────────────────────────────────
   local repo_dir
   while true; do
-    printf "Repo directory: "
-    read repo_dir
+    repo_dir=$(gum input --header "Repo directory" --placeholder "/path/to/repo" \
+      --prompt "> " --prompt.foreground 6)
     if [[ -z "$repo_dir" ]]; then
-      echo "  Error: repo directory cannot be empty."
+      echo "  ${_wt_red}Error:${_wt_reset} repo directory cannot be empty."
       continue
     fi
     if [[ ! -d "$repo_dir" ]]; then
-      echo "  ✗ Directory not found: $repo_dir"
+      echo "  ${_wt_red}✗${_wt_reset} Directory not found: ${_wt_dim}$repo_dir${_wt_reset}"
       continue
     fi
     if [[ ! -d "$repo_dir/.git" ]]; then
-      echo "  ✗ Not a git repo: $repo_dir"
+      echo "  ${_wt_red}✗${_wt_reset} Not a git repo: ${_wt_dim}$repo_dir${_wt_reset}"
       continue
     fi
     break
   done
 
   # ── Worktrees directory ───────────────────────────────────────
-  local worktrees_dir="${repo_dir}.worktrees"
-  vared -p "Worktrees directory: " worktrees_dir
+  local worktrees_dir
+  worktrees_dir=$(gum input --header "Worktrees directory" --value "${repo_dir}.worktrees" \
+    --prompt "> " --prompt.foreground 6)
   if [[ -z "$worktrees_dir" ]]; then
-    echo "  Error: worktrees directory cannot be empty."
+    echo "  ${_wt_red}Error:${_wt_reset} worktrees directory cannot be empty."
     return 1
   fi
 
@@ -274,7 +319,7 @@ register_project() {
   local pre_hook="$hooks_dir/${project_name}-pre-delete.sh"
 
   if [[ -f "$post_hook" ]]; then
-    echo "  ⚠ Hook already exists: $post_hook, keeping existing."
+    echo "  ${_wt_yellow}⚠${_wt_reset} Hook already exists: ${_wt_dim}$post_hook${_wt_reset}, keeping existing."
   else
     cat > "$post_hook" <<HOOK_EOF
 #!/usr/bin/env bash
@@ -299,11 +344,11 @@ echo "→ Post-create hook: \$WT_PATH"
 echo "→ Post-create hook complete."
 HOOK_EOF
     chmod +x "$post_hook"
-    echo "  ✓ Created: $post_hook"
+    echo "  ${_wt_green}✓${_wt_reset} Created: ${_wt_dim}$post_hook${_wt_reset}"
   fi
 
   if [[ -f "$pre_hook" ]]; then
-    echo "  ⚠ Hook already exists: $pre_hook, keeping existing."
+    echo "  ${_wt_yellow}⚠${_wt_reset} Hook already exists: ${_wt_dim}$pre_hook${_wt_reset}, keeping existing."
   else
     cat > "$pre_hook" <<HOOK_EOF
 #!/usr/bin/env bash
@@ -354,12 +399,12 @@ echo "✓ Worktree clean — safe to delete."
 exit 0
 HOOK_EOF
     chmod +x "$pre_hook"
-    echo "  ✓ Created: $pre_hook"
+    echo "  ${_wt_green}✓${_wt_reset} Created: ${_wt_dim}$pre_hook${_wt_reset}"
   fi
 
   # ── Append to projects.conf ───────────────────────────────────
   echo "${project_name}|${repo_dir}|${worktrees_dir}|${post_hook}|${pre_hook}" >> "$conf"
-  echo "  ✓ Registered in $conf"
+  echo "  ${_wt_green}✓${_wt_reset} Registered in ${_wt_dim}$conf${_wt_reset}"
 
   # ── Reload and activate ───────────────────────────────────────
   _wt_parse_projects
@@ -378,15 +423,22 @@ HOOK_EOF
   done
 
   echo ""
-  echo "✓ Project '$project_name' registered."
-  echo "  Post-create hook: $post_hook"
-  echo "  Pre-delete hook:  $pre_hook"
-  echo "→ Active project: $WT_PROJECT_NAME"
+  echo "${_wt_green}✓${_wt_reset} Project ${_wt_bold}'$project_name'${_wt_reset} registered."
+  echo "  Post-create hook: ${_wt_dim}$post_hook${_wt_reset}"
+  echo "  Pre-delete hook:  ${_wt_dim}$pre_hook${_wt_reset}"
+  echo "${_wt_cyan}→${_wt_reset} Active project: ${_wt_bold}$WT_PROJECT_NAME${_wt_reset}"
 }
 
 # ── Main menu ──────────────────────────────────────────────────────────────────
 worktree() {
   _wt_load_config || return 1
+
+  if ! command -v gum &>/dev/null; then
+    echo "${_wt_red}✗${_wt_reset} ${_wt_bold}gum${_wt_reset} is required but not installed."
+    echo "  Install with: ${_wt_cyan}brew install gum${_wt_reset}"
+    return 1
+  fi
+
   _wt_parse_projects || return 1
   _wt_select_project || return 1
 
@@ -395,43 +447,42 @@ worktree() {
   while true; do
     clear
     echo ""
-    echo "Git Worktree Manager [$WT_PROJECT_NAME]"
-    echo "$(printf '%0.s-' {1..40})"
-    echo "  1) Create a new worktree"
-    echo "  2) Open a worktree in IDE"
-    echo "  3) Delete an existing worktree"
-    echo "  4) List all worktrees"
-    echo "  5) Merge main into a worktree branch"
-    if (( multi_project )); then
-      echo "  6) Switch project"
-    fi
-    echo ""
-    echo "  q) Quit"
-    echo ""
-    printf "Enter choice: "
-    read -k 1 wt_choice
+    gum style --border rounded --border-foreground 240 --padding "0 2" \
+      "${_wt_bold}${_wt_cyan}Git Worktree Manager${_wt_reset} [${_wt_green}$WT_PROJECT_NAME${_wt_reset}]"
     echo ""
 
+    local -a _menu_items=(
+      "Create a new worktree"
+      "Open a worktree in IDE"
+      "Delete an existing worktree"
+      "List all worktrees"
+      "Merge main into a worktree branch"
+    )
+    if (( multi_project )); then
+      _menu_items+=("Switch project")
+    fi
+    _menu_items+=("Quit")
+
+    local wt_choice
+    wt_choice=$(gum choose --cursor.foreground 6 \
+      --header "Select an action:" "${_menu_items[@]}")
+    [[ -z "$wt_choice" ]] && break
+
     case "$wt_choice" in
-      1) new_worktree ;;
-      2) open_worktree ;;
-      3) delete_worktree ;;
-      4) list_worktrees ;;
-      5) merge_main_into_worktree ;;
-      6)
-        if (( multi_project )); then
-          _wt_select_project || true
-          multi_project=$(( ${#_WT_PROJECT_NAMES[@]} > 1 ))
-        else
-          echo "Error: invalid choice."
-        fi
+      "Create a new worktree") new_worktree ;;
+      "Open a worktree in IDE") open_worktree ;;
+      "Delete an existing worktree") delete_worktree ;;
+      "List all worktrees") list_worktrees ;;
+      "Merge main into a worktree branch") merge_main_into_worktree ;;
+      "Switch project")
+        _wt_select_project || true
+        multi_project=$(( ${#_WT_PROJECT_NAMES[@]} > 1 ))
         ;;
-      q|Q) echo "Goodbye." ; break ;;
-      *) echo "Error: invalid choice." ;;
+      "Quit") echo "${_wt_dim}Goodbye.${_wt_reset}" ; break ;;
     esac
 
     echo ""
-    printf "Press any key to return to the menu..."
+    printf "${_wt_dim}Press any key to return to the menu...${_wt_reset}"
     read -k 1
     echo ""
   done
@@ -440,27 +491,16 @@ worktree() {
 # ── List all worktrees ─────────────────────────────────────────────────────────
 list_worktrees() {
   echo ""
-  echo "Worktrees for: $WT_REPO_DIR"
+  gum style --border rounded --border-foreground 240 --padding "0 1" \
+    "${_wt_bold}${_wt_cyan}Worktrees for:${_wt_reset} ${_wt_dim}$WT_REPO_DIR${_wt_reset}"
   echo ""
 
-  local -a names commits branches
-  local max_len=4
-  local name
-  while read -r wt_path commit branch; do
-    name=$(basename "$wt_path")
-    names+=("$name")
-    commits+=("$commit")
-    branches+=("$branch")
-    (( ${#name} > max_len )) && max_len=${#name}
-  done < <(git -C "$WT_REPO_DIR" worktree list)
-
-  printf "  %-${max_len}s  %-9s  %s\n" "NAME" "SHA-1" "BRANCH"
-  printf "  %s\n" "$(printf '=%.0s' {1..50})"
-
-  local i
-  for (( i = 1; i <= ${#names[@]}; i++ )); do
-    printf "  %-${max_len}s  %-9s  %s\n" "${names[$i]}" "${commits[$i]}" "${branches[$i]}"
-  done
+  {
+    echo "NAME,SHA-1,BRANCH"
+    while read -r wt_path commit branch; do
+      printf '%s,%s,%s\n' "$(basename "$wt_path")" "$commit" "$branch"
+    done < <(git -C "$WT_REPO_DIR" worktree list)
+  } | gum table --print --border rounded --border.foreground 240
   echo ""
 }
 
@@ -472,67 +512,62 @@ merge_main_into_worktree() {
   done < <(git -C "$WT_REPO_DIR" worktree list --porcelain | grep '^worktree ' | awk '{print $2}' | tail -n +2)
 
   if [[ ${#worktrees[@]} -eq 0 ]]; then
-    echo "No additional worktrees found."
+    echo "${_wt_yellow}No additional worktrees found.${_wt_reset}"
     return 0
   fi
 
-  local -a wt_names wt_commits wt_branches
-  local max_len=4
+  local -a wt_display
   local name commit branch
   for wt in "${worktrees[@]}"; do
     name=$(basename "$wt")
     read -r _ commit branch < <(git -C "$WT_REPO_DIR" worktree list | grep "^$wt ")
-    wt_names+=("$name")
-    wt_commits+=("$commit")
-    wt_branches+=("$branch")
-    (( ${#name} > max_len )) && max_len=${#name}
+    wt_display+=("$name  $branch")
   done
 
   echo ""
-  echo "Select a worktree to merge main into:"
-  printf "  %-4s  %-${max_len}s  %-9s  %s\n" "#" "NAME" "SHA-1" "BRANCH"
-  printf "  %s\n" "$(printf '=%.0s' {1..50})"
+  local selection
+  selection=$(gum choose --cursor.foreground 6 \
+    --header "Select a worktree to merge main into:" "${wt_display[@]}")
+  [[ -z "$selection" ]] && { echo "${_wt_dim}Aborted.${_wt_reset}"; return 0; }
+
+  # Find the matching worktree
+  local target target_branch
   local i
-  for (( i = 1; i <= ${#wt_names[@]}; i++ )); do
-    printf "  %-4s  %-${max_len}s  %-9s  %s\n" "$i)" "${wt_names[$i]}" "${wt_commits[$i]}" "${wt_branches[$i]}"
+  for (( i = 1; i <= ${#wt_display[@]}; i++ )); do
+    if [[ "${wt_display[$i]}" == "$selection" ]]; then
+      target="${worktrees[$i]}"
+      read -r _ _ branch < <(git -C "$WT_REPO_DIR" worktree list | grep "^$target ")
+      target_branch=$(echo "$branch" | tr -d '[]')
+      break
+    fi
   done
-  echo ""
-
-  printf "Enter the number of the worktree (or 'q' to quit): "
-  read -k 1 selection
-  echo ""
-
-  if [[ "$selection" == "q" || "$selection" == "Q" ]]; then
-    echo "Aborted."
-    return 0
-  fi
-
-  if ! [[ "$selection" =~ ^[0-9]+$ ]] || (( selection < 1 || selection > ${#worktrees[@]} )); then
-    echo "Error: invalid selection."
-    return 1
-  fi
-
-  local target="${worktrees[$selection]}"
-  local target_branch
-  target_branch=$(echo "${wt_branches[$selection]}" | tr -d '[]')
 
   echo ""
-  echo "Pulling latest main in $WT_REPO_DIR..."
-  git -C "$WT_REPO_DIR" checkout main && git -C "$WT_REPO_DIR" pull origin main
+  echo "${_wt_cyan}→${_wt_reset} Checking out main..."
+  gum spin --spinner dot --title "Checking out main..." -- \
+    git -C "$WT_REPO_DIR" checkout main
   if [[ $? -ne 0 ]]; then
-    echo "✗ Failed to pull main. Aborting."
+    echo "${_wt_red}✗${_wt_reset} Failed to checkout main."
+    return 1
+  fi
+
+  echo "${_wt_cyan}→${_wt_reset} Pulling latest from origin..."
+  gum spin --spinner dot --title "Pulling latest main..." --show-output -- \
+    git -C "$WT_REPO_DIR" pull origin main
+  if [[ $? -ne 0 ]]; then
+    echo "${_wt_red}✗${_wt_reset} Failed to pull main. Aborting."
     return 1
   fi
 
   echo ""
-  echo "Merging main into '$target_branch' in worktree at $target..."
+  echo "${_wt_cyan}→${_wt_reset} Merging ${_wt_bold}main${_wt_reset} into ${_wt_bold}'$target_branch'${_wt_reset} in worktree at ${_wt_dim}$target${_wt_reset}..."
   git -C "$target" merge main
   if [[ $? -eq 0 ]]; then
     echo ""
-    echo "✓ main merged into '$target_branch' successfully."
+    echo "${_wt_green}✓${_wt_reset} ${_wt_bold}main${_wt_reset} merged into ${_wt_bold}'$target_branch'${_wt_reset} successfully."
   else
     echo ""
-    echo "✗ Merge encountered conflicts. Resolve them in: $target"
+    echo "${_wt_red}✗${_wt_reset} Merge encountered conflicts. Resolve them in: ${_wt_dim}$target${_wt_reset}"
     return 1
   fi
 }
@@ -542,46 +577,41 @@ new_worktree() {
   local ORIGINAL_DIR="$(pwd)"
 
   echo ""
-  echo "Git Worktree Creator"
-  echo "--------------------"
-  echo "Would you like to:"
-  echo "  1) Create a new branch off of main"
-  echo "  2) Use an existing branch"
-  echo ""
-  printf "Enter choice [1/2]: "
-  read -k 1 branch_choice
+  gum style --border rounded --border-foreground 240 --padding "0 2" \
+    "${_wt_bold}${_wt_cyan}Git Worktree Creator${_wt_reset}"
   echo ""
 
+  local branch_choice
+  branch_choice=$(gum choose --cursor.foreground 6 \
+    --header "Would you like to:" \
+    "Create a new branch off of main" \
+    "Use an existing branch")
+  [[ -z "$branch_choice" ]] && return 0
+
   local branch_name
-  if [[ "$branch_choice" == "1" ]]; then
-    printf "Enter the name for the new branch: "
-    read branch_name
+  if [[ "$branch_choice" == "Create a new branch off of main" ]]; then
+    branch_name=$(gum input --header "New branch name" --placeholder "feature/my-feature" \
+      --prompt "> " --prompt.foreground 6)
     if [[ -z "$branch_name" ]]; then
-      echo "Error: branch name cannot be empty."
+      echo "${_wt_red}Error:${_wt_reset} branch name cannot be empty."
       return 1
     fi
-  elif [[ "$branch_choice" == "2" ]]; then
-    echo ""
-    echo "Type to fuzzy-search local branches (ESC to cancel):"
-    branch_name=$(git -C "$WT_REPO_DIR" branch --format='%(refname:short)' \
-      | fzf --height=40% --reverse --border \
-            --prompt="Branch> " \
-            --header="Select an existing branch" \
-            --no-multi)
-    if [[ -z "$branch_name" ]]; then
-      echo "No branch selected. Aborting."
-      return 1
-    fi
-    echo "Selected branch: $branch_name"
   else
-    echo "Error: invalid choice. Please enter 1 or 2."
-    return 1
+    branch_name=$(git -C "$WT_REPO_DIR" branch --format='%(refname:short)' \
+      | gum filter --header "Select an existing branch" \
+          --placeholder "Type to filter..." --indicator.foreground 6)
+    if [[ -z "$branch_name" ]]; then
+      echo "${_wt_yellow}No branch selected. Aborting.${_wt_reset}"
+      return 1
+    fi
+    echo "${_wt_cyan}→${_wt_reset} Selected branch: ${_wt_bold}$branch_name${_wt_reset}"
   fi
 
   local worktree_name="${branch_name//\//-}"
-  vared -p "Enter the worktree directory name: " worktree_name
+  worktree_name=$(gum input --header "Worktree directory name" --value "$worktree_name" \
+    --prompt "> " --prompt.foreground 6)
   if [[ -z "$worktree_name" ]]; then
-    echo "Error: worktree directory name cannot be empty."
+    echo "${_wt_red}Error:${_wt_reset} worktree directory name cannot be empty."
     return 1
   fi
 
@@ -589,33 +619,34 @@ new_worktree() {
 
   mkdir -p "$WT_WORKTREES_DIR"
 
-  if [[ "$branch_choice" == "1" ]]; then
+  if [[ "$branch_choice" == "Create a new branch off of main" ]]; then
     echo ""
-    echo "Creating worktree at '$worktree_path' with new branch '$branch_name' off of main..."
-    git -C "$WT_REPO_DIR" worktree add -b "$branch_name" "$worktree_path" main
+    echo "${_wt_cyan}→${_wt_reset} Creating worktree with new branch ${_wt_bold}'$branch_name'${_wt_reset} off of main..."
+    gum spin --spinner dot --title "Creating worktree..." --show-output -- \
+      git -C "$WT_REPO_DIR" worktree add -b "$branch_name" "$worktree_path" main
   else
     echo ""
-    echo "Creating worktree at '$worktree_path' using existing branch '$branch_name'..."
-    git -C "$WT_REPO_DIR" worktree add "$worktree_path" "$branch_name"
+    echo "${_wt_cyan}→${_wt_reset} Creating worktree using existing branch ${_wt_bold}'$branch_name'${_wt_reset}..."
+    gum spin --spinner dot --title "Creating worktree..." --show-output -- \
+      git -C "$WT_REPO_DIR" worktree add "$worktree_path" "$branch_name"
   fi
 
   if [[ $? -eq 0 ]]; then
-    echo ""
-    echo "✓ Worktree created successfully at: $worktree_path"
+    echo "${_wt_green}✓${_wt_reset} Worktree created at: ${_wt_dim}$worktree_path${_wt_reset}"
 
     # Run post-create hook
     _wt_run_post_create_hook "$WT_POST_CREATE_HOOK" "$worktree_path" "$WT_REPO_DIR"
 
     echo ""
-    echo "Opening worktree in ${DEFAULT_IDE_CMD:-code}..."
+    echo "${_wt_cyan}→${_wt_reset} Opening worktree in ${_wt_bold}${DEFAULT_IDE_CMD:-code}${_wt_reset}..."
     cd "$worktree_path" && ${DEFAULT_IDE_CMD:-code} .
 
     cd "$ORIGINAL_DIR"
     echo ""
-    echo "✓ Done."
+    echo "${_wt_green}✓${_wt_reset} Done."
   else
     echo ""
-    echo "✗ Failed to create worktree. Check the branch name and try again."
+    echo "${_wt_red}✗${_wt_reset} Failed to create worktree. Check the branch name and try again."
     return 1
   fi
 }
@@ -628,54 +659,36 @@ delete_worktree() {
   done < <(git -C "$WT_REPO_DIR" worktree list --porcelain | grep '^worktree ' | awk '{print $2}' | tail -n +2)
 
   if [[ ${#worktrees[@]} -eq 0 ]]; then
-    echo "No additional worktrees found."
+    echo "${_wt_yellow}No additional worktrees found.${_wt_reset}"
     return 0
   fi
 
-  local -a wt_names wt_commits wt_branches
-  local max_len=4
+  local -a wt_display
   local name commit branch
   for wt in "${worktrees[@]}"; do
     name=$(basename "$wt")
     read -r _ commit branch < <(git -C "$WT_REPO_DIR" worktree list | grep "^$wt ")
-    wt_names+=("$name")
-    wt_commits+=("$commit")
-    wt_branches+=("$branch")
-    (( ${#name} > max_len )) && max_len=${#name}
+    wt_display+=("$name  $branch")
   done
 
   echo ""
-  echo "Existing worktrees:"
-  printf "  %-4s  %-${max_len}s  %-9s  %s\n" "#" "NAME" "SHA-1" "BRANCH"
-  printf "  %s\n" "$(printf '=%.0s' {1..50})"
+  local selection
+  selection=$(gum choose --cursor.foreground 6 \
+    --header "Select a worktree to delete:" "${wt_display[@]}")
+  [[ -z "$selection" ]] && { echo "${_wt_dim}Aborted.${_wt_reset}"; return 0; }
+
+  # Find matching worktree path
+  local target
   local i
-  for (( i = 1; i <= ${#wt_names[@]}; i++ )); do
-    printf "  %-4s  %-${max_len}s  %-9s  %s\n" "$i)" "${wt_names[$i]}" "${wt_commits[$i]}" "${wt_branches[$i]}"
+  for (( i = 1; i <= ${#wt_display[@]}; i++ )); do
+    if [[ "${wt_display[$i]}" == "$selection" ]]; then
+      target="${worktrees[$i]}"
+      break
+    fi
   done
-  echo ""
 
-  printf "Enter the number of the worktree to delete (or 'q' to quit): "
-  read -k 1 selection
-  echo ""
-
-  if [[ "$selection" == "q" || "$selection" == "Q" ]]; then
-    echo "Aborted."
-    return 0
-  fi
-
-  if ! [[ "$selection" =~ ^[0-9]+$ ]] || (( selection < 1 || selection > ${#worktrees[@]} )); then
-    echo "Error: invalid selection."
-    return 1
-  fi
-
-  local target="${worktrees[$selection]}"
-
-  printf "Are you sure you want to delete the worktree at '$target'? [y/N]: "
-  read -k 1 confirm
-  echo ""
-
-  if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
-    echo "Aborted."
+  if ! gum confirm "Delete worktree at '$target'?"; then
+    echo "${_wt_dim}Aborted.${_wt_reset}"
     return 0
   fi
 
@@ -683,12 +696,13 @@ delete_worktree() {
   echo ""
   _wt_run_pre_delete_hook "$WT_PRE_DELETE_HOOK" "$target" "$WT_REPO_DIR" || return 1
 
-  git -C "$WT_REPO_DIR" worktree remove --force "$target"
+  gum spin --spinner dot --title "Removing worktree..." --show-error -- \
+    git -C "$WT_REPO_DIR" worktree remove --force "$target"
 
   if [[ $? -eq 0 ]]; then
-    echo "✓ Worktree '$target' removed successfully."
+    echo "${_wt_green}✓${_wt_reset} Worktree ${_wt_dim}'$target'${_wt_reset} removed successfully."
   else
-    echo "✗ Failed to remove worktree. You may need to remove it manually."
+    echo "${_wt_red}✗${_wt_reset} Failed to remove worktree. You may need to remove it manually."
     return 1
   fi
 }
@@ -701,52 +715,39 @@ open_worktree() {
   done < <(git -C "$WT_REPO_DIR" worktree list --porcelain | grep '^worktree ' | awk '{print $2}' | tail -n +2)
 
   if [[ ${#worktrees[@]} -eq 0 ]]; then
-    echo "No additional worktrees found."
+    echo "${_wt_yellow}No additional worktrees found.${_wt_reset}"
     return 0
   fi
 
-  local -a wt_names wt_commits wt_branches
-  local max_len=4
+  local -a wt_display
   local name commit branch
   for wt in "${worktrees[@]}"; do
     name=$(basename "$wt")
     read -r _ commit branch < <(git -C "$WT_REPO_DIR" worktree list | grep "^$wt ")
-    wt_names+=("$name")
-    wt_commits+=("$commit")
-    wt_branches+=("$branch")
-    (( ${#name} > max_len )) && max_len=${#name}
+    wt_display+=("$name  $branch")
   done
 
   echo ""
-  echo "Select a worktree to open:"
-  printf "  %-4s  %-${max_len}s  %-9s  %s\n" "#" "NAME" "SHA-1" "BRANCH"
-  printf "  %s\n" "$(printf '=%.0s' {1..50})"
+  local selection
+  selection=$(gum choose --cursor.foreground 6 \
+    --header "Select a worktree to open:" "${wt_display[@]}")
+  [[ -z "$selection" ]] && { echo "${_wt_dim}Aborted.${_wt_reset}"; return 0; }
+
+  # Find matching worktree path
+  local target
   local i
-  for (( i = 1; i <= ${#wt_names[@]}; i++ )); do
-    printf "  %-4s  %-${max_len}s  %-9s  %s\n" "$i)" "${wt_names[$i]}" "${wt_commits[$i]}" "${wt_branches[$i]}"
+  for (( i = 1; i <= ${#wt_display[@]}; i++ )); do
+    if [[ "${wt_display[$i]}" == "$selection" ]]; then
+      target="${worktrees[$i]}"
+      break
+    fi
   done
-  echo ""
 
-  printf "Enter the number of the worktree to open (or 'q' to quit): "
-  read -k 1 selection
-  echo ""
-
-  if [[ "$selection" == "q" || "$selection" == "Q" ]]; then
-    echo "Aborted."
-    return 0
-  fi
-
-  if ! [[ "$selection" =~ ^[0-9]+$ ]] || (( selection < 1 || selection > ${#worktrees[@]} )); then
-    echo "Error: invalid selection."
-    return 1
-  fi
-
-  local target="${worktrees[$selection]}"
   local ide_cmd="${DEFAULT_IDE_CMD:-code}"
 
   echo ""
-  echo "Opening worktree in $ide_cmd..."
+  echo "${_wt_cyan}→${_wt_reset} Opening worktree in ${_wt_bold}$ide_cmd${_wt_reset}..."
   cd "$target" && $ide_cmd .
   cd -
-  echo "✓ Done."
+  echo "${_wt_green}✓${_wt_reset} Done."
 }
