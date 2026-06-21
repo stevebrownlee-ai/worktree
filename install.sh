@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ── Git Worktree Manager — Installer ──────────────────────────────────────────
-# Downloads worktree.zsh and creates a starter config.zsh in ~/.config/worktree/
+# Downloads worktree.zsh and creates starter config files in ~/.config/worktree/
 #
 # Usage:
 #   bash install.sh
 #
 # After running:
-#   1. Edit ~/.config/worktree/config.zsh and fill in your values
+#   1. Edit ~/.config/worktree/projects.conf and add your project(s)
 #   2. Add this line to your ~/.zshrc:
 #        source "$HOME/.config/worktree/worktree.zsh"
 #   3. Run: source ~/.zshrc
@@ -23,6 +23,7 @@ echo "---------------------------------"
 # ── Create install directory ──────────────────────────────────────────────────
 echo "→ Creating $INSTALL_DIR ..."
 mkdir -p "$INSTALL_DIR"
+mkdir -p "$INSTALL_DIR/hooks"
 
 # ── Download worktree.zsh ─────────────────────────────────────────────────────
 echo "→ Downloading worktree.zsh ..."
@@ -58,24 +59,35 @@ else
   echo "→ Creating starter config.zsh ..."
   cat > "$CONFIG_FILE" <<'EOF'
 # ── Git Worktree Manager Configuration ────────────────────────────────────────
-# Fill in the values below, then run: source ~/.zshrc
+# Global settings only. Per-project settings live in projects.conf.
 
-# Absolute path to the main git repository
-WORKTREE_REPO_DIR=""
-
-# Directory where worktrees will be created (sibling of the repo by convention)
-# Example: "${WORKTREE_REPO_DIR}.worktrees"
-WORKTREE_DIR=""
-
-# Files and directories to copy from the main repo into each new worktree.
-# Paths are relative to WORKTREE_REPO_DIR. Leave empty to skip copying.
-WORKTREE_FILES=(
-  # AGENTS.md
-  # .env.local
-  # backend/config/dev.secret.exs
-)
+# Command used to open a worktree directory in your IDE
+# e.g. "code", "cursor", "antigravity-ide", "zed"
+DEFAULT_IDE_CMD="code"
 EOF
   echo "  ✓ config.zsh created at $CONFIG_FILE"
+fi
+
+# ── Create projects.conf (only if it doesn't already exist) ──────────────────
+PROJECTS_FILE="$INSTALL_DIR/projects.conf"
+if [[ -f "$PROJECTS_FILE" ]]; then
+  echo "  ⚠ $PROJECTS_FILE already exists — skipping (your values are preserved)."
+else
+  echo "→ Creating starter projects.conf ..."
+  cat > "$PROJECTS_FILE" <<'EOF'
+# Worktree Manager — Project Registry
+# Format: project_name|repo_dir|worktrees_dir|post_create_hook|pre_delete_hook
+#
+# - post_create_hook: runs after worktree creation (non-blocking)
+# - pre_delete_hook:  runs before worktree deletion (blocking — non-zero exit aborts)
+#
+# Leave hook fields empty to skip. Example with no hooks:
+#   myproject|/path/to/repo|/path/to/repo.worktrees||
+#
+# Use the "Register a new project" menu option to add projects interactively.
+# It will scaffold both hook files automatically.
+EOF
+  echo "  ✓ projects.conf created at $PROJECTS_FILE"
 fi
 
 # ── Print next steps ──────────────────────────────────────────────────────────
@@ -83,12 +95,14 @@ echo ""
 echo "✓ Installation complete!"
 echo ""
 echo "Next steps:"
-echo "  1. Edit $CONFIG_FILE"
-echo "     Set WORKTREE_REPO_DIR, WORKTREE_DIR, and WORKTREE_FILES for your project."
-echo ""
-echo "  2. Add this line to your ~/.zshrc:"
+echo "  1. Add this line to your ~/.zshrc:"
 echo '     source "$HOME/.config/worktree/worktree.zsh"'
 echo ""
-echo "  3. Reload your shell:"
+echo "  2. Reload your shell:"
 echo "     source ~/.zshrc"
+echo ""
+echo "  3. Run the manager and use option 'Register a new project' to add your first project:"
+echo "     worktree"
+echo ""
+echo "  Or manually edit $PROJECTS_FILE to add projects."
 echo ""
