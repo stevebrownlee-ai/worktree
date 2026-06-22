@@ -52,19 +52,7 @@ else
   fi
 fi
 
-# ── Install gum (required for interactive UI) ────────────────────────────────
-if command -v gum &>/dev/null; then
-  echo "  ✓ gum is already installed."
-else
-  echo "→ Installing gum (required for interactive UI) ..."
-  if command -v brew &>/dev/null; then
-    brew install gum
-    echo "  ✓ gum installed via Homebrew."
-  else
-    echo "  ⚠ Homebrew not found. Please install gum manually:"
-    echo "    https://github.com/charmbracelet/gum#installation"
-  fi
-fi
+
 
 # ── Create config.zsh (only if it doesn't already exist) ─────────────────────
 CONFIG_FILE="$INSTALL_DIR/config.zsh"

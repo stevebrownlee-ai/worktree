@@ -156,37 +156,62 @@ _wt_select_project() {
     return 0
   fi
 
-  local -a _proj_choices
+  # Compute max line width for box
+  local max_len=4
   local i
   for (( i = 1; i <= count; i++ )); do
-    _proj_choices+=("${_WT_PROJECT_NAMES[$i]}")
+    (( ${#_WT_PROJECT_NAMES[$i]} > max_len )) && max_len=${#_WT_PROJECT_NAMES[$i]}
   done
-  _proj_choices+=("Register a new project")
+
+  # Compute box width from longest content line
+  local -a _proj_lines
+  for (( i = 1; i <= count; i++ )); do
+    _proj_lines+=("  ${_wt_yellow}$i)${_wt_reset}  ${_wt_bold}${_WT_PROJECT_NAMES[$i]}${_wt_reset}  ${_wt_dim}${_WT_REPO_DIRS[$i]}${_wt_reset}  ")
+  done
+  _proj_lines+=("  ${_wt_yellow}n)${_wt_reset}  Register a new project  ")
+
+  local _title="  ${_wt_bold}${_wt_cyan}Select a project${_wt_reset}  "
+  local _bw=$(_wt_visible_len "$_title")
+  for _line in "${_proj_lines[@]}"; do
+    local _lw=$(_wt_visible_len "$_line")
+    (( _lw > _bw )) && _bw=$_lw
+  done
+  (( _bw < 40 )) && _bw=40
+
+  clear
+  echo ""
+  _wt_box_top $_bw
+  _wt_box_line $_bw "$_title"
+  _wt_box_mid $_bw
+  for (( i = 1; i <= count; i++ )); do
+    _wt_box_line $_bw "${_proj_lines[$i]}"
+  done
+  _wt_box_empty $_bw
+  _wt_box_line $_bw "${_proj_lines[-1]}"
+  _wt_box_bottom $_bw
 
   local selection
-  selection=$(gum choose --cursor.foreground 6 \
-    --header "Select a project:" "${_proj_choices[@]}")
-  [[ -z "$selection" ]] && return 1
+  printf "${_wt_cyan}Enter choice:${_wt_reset} "
+  read -k 1 selection
+  echo ""
 
-  if [[ "$selection" == "Register a new project" ]]; then
+  if [[ "$selection" == "n" ]]; then
     register_project
     return $?
   fi
 
-  for (( i = 1; i <= count; i++ )); do
-    if [[ "${_WT_PROJECT_NAMES[$i]}" == "$selection" ]]; then
-      WT_PROJECT_NAME="${_WT_PROJECT_NAMES[$i]}"
-      WT_REPO_DIR="${_WT_REPO_DIRS[$i]}"
-      WT_WORKTREES_DIR="${_WT_WORKTREES_DIRS[$i]}"
-      WT_POST_CREATE_HOOK="${_WT_POST_CREATE_HOOKS[$i]}"
-      WT_PRE_DELETE_HOOK="${_WT_PRE_DELETE_HOOKS[$i]}"
-      echo "${_wt_cyan}→${_wt_reset} Active project: ${_wt_bold}$WT_PROJECT_NAME${_wt_reset}"
-      return 0
-    fi
-  done
+  if ! [[ "$selection" =~ ^[0-9]+$ ]] || (( selection < 1 || selection > count )); then
+    echo "${_wt_red}Error:${_wt_reset} invalid selection."
+    return 1
+  fi
 
-  echo "${_wt_red}Error:${_wt_reset} invalid selection."
-  return 1
+  WT_PROJECT_NAME="${_WT_PROJECT_NAMES[$selection]}"
+  WT_REPO_DIR="${_WT_REPO_DIRS[$selection]}"
+  WT_WORKTREES_DIR="${_WT_WORKTREES_DIRS[$selection]}"
+  WT_POST_CREATE_HOOK="${_WT_POST_CREATE_HOOKS[$selection]}"
+  WT_PRE_DELETE_HOOK="${_WT_PRE_DELETE_HOOKS[$selection]}"
+  echo "${_wt_cyan}→${_wt_reset} Active project: ${_wt_bold}$WT_PROJECT_NAME${_wt_reset}"
+  return 0
 }
 
 # ── Run a post-create hook (non-blocking) ──────────────────────────────────────
@@ -254,14 +279,13 @@ register_project() {
   local hooks_dir="$HOME/.config/worktree/hooks"
 
   echo ""
-  gum style --border rounded --border-foreground 240 --padding "0 2" \
-    "${_wt_bold}${_wt_cyan}Register New Project${_wt_reset}"
+  _wt_banner "${_wt_bold}${_wt_cyan}Register New Project${_wt_reset}"
 
   # ── Project name ──────────────────────────────────────────────
   local project_name
   while true; do
-    project_name=$(gum input --header "Project name" --placeholder "my-project" \
-      --prompt "> " --prompt.foreground 6)
+    printf "${_wt_cyan}Project name${_wt_reset}: "
+    read project_name
     if [[ -z "$project_name" ]]; then
       echo "  ${_wt_red}Error:${_wt_reset} project name cannot be empty."
       continue
@@ -286,8 +310,8 @@ register_project() {
   # ── Repo directory ────────────────────────────────────────────
   local repo_dir
   while true; do
-    repo_dir=$(gum input --header "Repo directory" --placeholder "/path/to/repo" \
-      --prompt "> " --prompt.foreground 6)
+    printf "${_wt_cyan}Repo directory${_wt_reset}: "
+    read repo_dir
     if [[ -z "$repo_dir" ]]; then
       echo "  ${_wt_red}Error:${_wt_reset} repo directory cannot be empty."
       continue
@@ -304,9 +328,8 @@ register_project() {
   done
 
   # ── Worktrees directory ───────────────────────────────────────
-  local worktrees_dir
-  worktrees_dir=$(gum input --header "Worktrees directory" --value "${repo_dir}.worktrees" \
-    --prompt "> " --prompt.foreground 6)
+  local worktrees_dir="${repo_dir}.worktrees"
+  vared -p "${_wt_cyan}Worktrees directory${_wt_reset}: " worktrees_dir
   if [[ -z "$worktrees_dir" ]]; then
     echo "  ${_wt_red}Error:${_wt_reset} worktrees directory cannot be empty."
     return 1
@@ -432,13 +455,6 @@ HOOK_EOF
 # ── Main menu ──────────────────────────────────────────────────────────────────
 worktree() {
   _wt_load_config || return 1
-
-  if ! command -v gum &>/dev/null; then
-    echo "${_wt_red}✗${_wt_reset} ${_wt_bold}gum${_wt_reset} is required but not installed."
-    echo "  Install with: ${_wt_cyan}brew install gum${_wt_reset}"
-    return 1
-  fi
-
   _wt_parse_projects || return 1
   _wt_select_project || return 1
 
@@ -447,38 +463,43 @@ worktree() {
   while true; do
     clear
     echo ""
-    gum style --border rounded --border-foreground 240 --padding "0 2" \
-      "${_wt_bold}${_wt_cyan}Git Worktree Manager${_wt_reset} [${_wt_green}$WT_PROJECT_NAME${_wt_reset}]"
+    local _menu_title="  ${_wt_bold}${_wt_cyan}Git Worktree Manager${_wt_reset} [${_wt_green}$WT_PROJECT_NAME${_wt_reset}]  "
+    local _bw=$(_wt_visible_len "$_menu_title")
+    (( _bw < 44 )) && _bw=44
+    _wt_box_top $_bw
+    _wt_box_line $_bw "$_menu_title"
+    _wt_box_mid $_bw
+    _wt_box_line $_bw "  ${_wt_yellow}1)${_wt_reset} Create a new worktree"
+    _wt_box_line $_bw "  ${_wt_yellow}2)${_wt_reset} Open a worktree in IDE"
+    _wt_box_line $_bw "  ${_wt_yellow}3)${_wt_reset} Delete an existing worktree"
+    _wt_box_line $_bw "  ${_wt_yellow}4)${_wt_reset} List all worktrees"
+    _wt_box_line $_bw "  ${_wt_yellow}5)${_wt_reset} Merge main into a worktree branch"
+    if (( multi_project )); then
+      _wt_box_line $_bw "  ${_wt_yellow}6)${_wt_reset} Switch project"
+    fi
+    _wt_box_empty $_bw
+    _wt_box_line $_bw "  ${_wt_dim}q) Quit${_wt_reset}"
+    _wt_box_bottom $_bw
+    printf "${_wt_cyan}Enter choice:${_wt_reset} "
+    read -k 1 wt_choice
     echo ""
 
-    local -a _menu_items=(
-      "Create a new worktree"
-      "Open a worktree in IDE"
-      "Delete an existing worktree"
-      "List all worktrees"
-      "Merge main into a worktree branch"
-    )
-    if (( multi_project )); then
-      _menu_items+=("Switch project")
-    fi
-    _menu_items+=("Quit")
-
-    local wt_choice
-    wt_choice=$(gum choose --cursor.foreground 6 \
-      --header "Select an action:" "${_menu_items[@]}")
-    [[ -z "$wt_choice" ]] && break
-
     case "$wt_choice" in
-      "Create a new worktree") new_worktree ;;
-      "Open a worktree in IDE") open_worktree ;;
-      "Delete an existing worktree") delete_worktree ;;
-      "List all worktrees") list_worktrees ;;
-      "Merge main into a worktree branch") merge_main_into_worktree ;;
-      "Switch project")
-        _wt_select_project || true
-        multi_project=$(( ${#_WT_PROJECT_NAMES[@]} > 1 ))
+      1) new_worktree ;;
+      2) open_worktree ;;
+      3) delete_worktree ;;
+      4) list_worktrees ;;
+      5) merge_main_into_worktree ;;
+      6)
+        if (( multi_project )); then
+          _wt_select_project || true
+          multi_project=$(( ${#_WT_PROJECT_NAMES[@]} > 1 ))
+        else
+          echo "${_wt_red}Error:${_wt_reset} invalid choice."
+        fi
         ;;
-      "Quit") echo "${_wt_dim}Goodbye.${_wt_reset}" ; break ;;
+      q|Q) echo "${_wt_dim}Goodbye.${_wt_reset}" ; break ;;
+      *) echo "${_wt_red}Error:${_wt_reset} invalid choice." ;;
     esac
 
     echo ""
@@ -491,16 +512,27 @@ worktree() {
 # ── List all worktrees ─────────────────────────────────────────────────────────
 list_worktrees() {
   echo ""
-  gum style --border rounded --border-foreground 240 --padding "0 1" \
-    "${_wt_bold}${_wt_cyan}Worktrees for:${_wt_reset} ${_wt_dim}$WT_REPO_DIR${_wt_reset}"
+  _wt_banner "${_wt_bold}${_wt_cyan}Worktrees for:${_wt_reset} ${_wt_dim}$WT_REPO_DIR${_wt_reset}"
   echo ""
 
-  {
-    echo "NAME,SHA-1,BRANCH"
-    while read -r wt_path commit branch; do
-      printf '%s,%s,%s\n' "$(basename "$wt_path")" "$commit" "$branch"
-    done < <(git -C "$WT_REPO_DIR" worktree list)
-  } | gum table --print --border rounded --border.foreground 240
+  local -a names commits branches
+  local max_len=4
+  local name
+  while read -r wt_path commit branch; do
+    name=$(basename "$wt_path")
+    names+=("$name")
+    commits+=("$commit")
+    branches+=("$branch")
+    (( ${#name} > max_len )) && max_len=${#name}
+  done < <(git -C "$WT_REPO_DIR" worktree list)
+
+  printf "  ${_wt_bold}%-${max_len}s  %-9s  %s${_wt_reset}\n" "NAME" "SHA-1" "BRANCH"
+  _wt_table_sep 50
+
+  local i
+  for (( i = 1; i <= ${#names[@]}; i++ )); do
+    printf "  %-${max_len}s  ${_wt_dim}%-9s${_wt_reset}  ${_wt_cyan}%s${_wt_reset}\n" "${names[$i]}" "${commits[$i]}" "${branches[$i]}"
+  done
   echo ""
 }
 
@@ -516,44 +548,50 @@ merge_main_into_worktree() {
     return 0
   fi
 
-  local -a wt_display
+  local -a wt_names wt_commits wt_branches
+  local max_len=4
   local name commit branch
   for wt in "${worktrees[@]}"; do
     name=$(basename "$wt")
     read -r _ commit branch < <(git -C "$WT_REPO_DIR" worktree list | grep "^$wt ")
-    wt_display+=("$name  $branch")
+    wt_names+=("$name")
+    wt_commits+=("$commit")
+    wt_branches+=("$branch")
+    (( ${#name} > max_len )) && max_len=${#name}
   done
 
   echo ""
-  local selection
-  selection=$(gum choose --cursor.foreground 6 \
-    --header "Select a worktree to merge main into:" "${wt_display[@]}")
-  [[ -z "$selection" ]] && { echo "${_wt_dim}Aborted.${_wt_reset}"; return 0; }
-
-  # Find the matching worktree
-  local target target_branch
+  _wt_banner "${_wt_bold}${_wt_cyan}Select a worktree to merge main into:${_wt_reset}"
+  echo ""
+  printf "  ${_wt_bold}%-4s  %-${max_len}s  %-9s  %s${_wt_reset}\n" "#" "NAME" "SHA-1" "BRANCH"
+  _wt_table_sep 50
   local i
-  for (( i = 1; i <= ${#wt_display[@]}; i++ )); do
-    if [[ "${wt_display[$i]}" == "$selection" ]]; then
-      target="${worktrees[$i]}"
-      read -r _ _ branch < <(git -C "$WT_REPO_DIR" worktree list | grep "^$target ")
-      target_branch=$(echo "$branch" | tr -d '[]')
-      break
-    fi
+  for (( i = 1; i <= ${#wt_names[@]}; i++ )); do
+    printf "  ${_wt_yellow}%-4s${_wt_reset}  %-${max_len}s  ${_wt_dim}%-9s${_wt_reset}  ${_wt_cyan}%s${_wt_reset}\n" "$i)" "${wt_names[$i]}" "${wt_commits[$i]}" "${wt_branches[$i]}"
   done
-
   echo ""
-  echo "${_wt_cyan}→${_wt_reset} Checking out main..."
-  gum spin --spinner dot --title "Checking out main..." -- \
-    git -C "$WT_REPO_DIR" checkout main
-  if [[ $? -ne 0 ]]; then
-    echo "${_wt_red}✗${_wt_reset} Failed to checkout main."
+
+  printf "${_wt_cyan}Enter the number of the worktree (or 'q' to quit):${_wt_reset} "
+  read -k 1 selection
+  echo ""
+
+  if [[ "$selection" == "q" || "$selection" == "Q" ]]; then
+    echo "${_wt_dim}Aborted.${_wt_reset}"
+    return 0
+  fi
+
+  if ! [[ "$selection" =~ ^[0-9]+$ ]] || (( selection < 1 || selection > ${#worktrees[@]} )); then
+    echo "${_wt_red}Error:${_wt_reset} invalid selection."
     return 1
   fi
 
-  echo "${_wt_cyan}→${_wt_reset} Pulling latest from origin..."
-  gum spin --spinner dot --title "Pulling latest main..." --show-output -- \
-    git -C "$WT_REPO_DIR" pull origin main
+  local target="${worktrees[$selection]}"
+  local target_branch
+  target_branch=$(echo "${wt_branches[$selection]}" | tr -d '[]')
+
+  echo ""
+  echo "${_wt_cyan}→${_wt_reset} Pulling latest main in ${_wt_dim}$WT_REPO_DIR${_wt_reset}..."
+  git -C "$WT_REPO_DIR" checkout main && git -C "$WT_REPO_DIR" pull origin main
   if [[ $? -ne 0 ]]; then
     echo "${_wt_red}✗${_wt_reset} Failed to pull main. Aborting."
     return 1
@@ -576,40 +614,46 @@ merge_main_into_worktree() {
 new_worktree() {
   local ORIGINAL_DIR="$(pwd)"
 
+  clear
   echo ""
-  gum style --border rounded --border-foreground 240 --padding "0 2" \
-    "${_wt_bold}${_wt_cyan}Git Worktree Creator${_wt_reset}"
+  _wt_banner "${_wt_bold}${_wt_cyan}Git Worktree Creator${_wt_reset}"
   echo ""
-
-  local branch_choice
-  branch_choice=$(gum choose --cursor.foreground 6 \
-    --header "Would you like to:" \
-    "Create a new branch off of main" \
-    "Use an existing branch")
-  [[ -z "$branch_choice" ]] && return 0
+  echo "Would you like to:"
+  echo "  ${_wt_yellow}1)${_wt_reset} Create a new branch off of main"
+  echo "  ${_wt_yellow}2)${_wt_reset} Use an existing branch"
+  echo ""
+  printf "${_wt_cyan}Enter choice [1/2]:${_wt_reset} "
+  read -k 1 branch_choice
+  echo ""
 
   local branch_name
-  if [[ "$branch_choice" == "Create a new branch off of main" ]]; then
-    branch_name=$(gum input --header "New branch name" --placeholder "feature/my-feature" \
-      --prompt "> " --prompt.foreground 6)
+  if [[ "$branch_choice" == "1" ]]; then
+    printf "${_wt_cyan}Enter the name for the new branch:${_wt_reset} "
+    read branch_name
     if [[ -z "$branch_name" ]]; then
       echo "${_wt_red}Error:${_wt_reset} branch name cannot be empty."
       return 1
     fi
-  else
+  elif [[ "$branch_choice" == "2" ]]; then
+    echo ""
+    echo "Type to fuzzy-search local branches (ESC to cancel):"
     branch_name=$(git -C "$WT_REPO_DIR" branch --format='%(refname:short)' \
-      | gum filter --header "Select an existing branch" \
-          --placeholder "Type to filter..." --indicator.foreground 6)
+      | fzf --height=40% --reverse --border \
+            --prompt="Branch> " \
+            --header="Select an existing branch" \
+            --no-multi)
     if [[ -z "$branch_name" ]]; then
       echo "${_wt_yellow}No branch selected. Aborting.${_wt_reset}"
       return 1
     fi
     echo "${_wt_cyan}→${_wt_reset} Selected branch: ${_wt_bold}$branch_name${_wt_reset}"
+  else
+    echo "${_wt_red}Error:${_wt_reset} invalid choice. Please enter 1 or 2."
+    return 1
   fi
 
   local worktree_name="${branch_name//\//-}"
-  worktree_name=$(gum input --header "Worktree directory name" --value "$worktree_name" \
-    --prompt "> " --prompt.foreground 6)
+  vared -p "Enter the worktree directory name: " worktree_name
   if [[ -z "$worktree_name" ]]; then
     echo "${_wt_red}Error:${_wt_reset} worktree directory name cannot be empty."
     return 1
@@ -619,20 +663,19 @@ new_worktree() {
 
   mkdir -p "$WT_WORKTREES_DIR"
 
-  if [[ "$branch_choice" == "Create a new branch off of main" ]]; then
+  if [[ "$branch_choice" == "1" ]]; then
     echo ""
-    echo "${_wt_cyan}→${_wt_reset} Creating worktree with new branch ${_wt_bold}'$branch_name'${_wt_reset} off of main..."
-    gum spin --spinner dot --title "Creating worktree..." --show-output -- \
-      git -C "$WT_REPO_DIR" worktree add -b "$branch_name" "$worktree_path" main
+    echo "${_wt_cyan}→${_wt_reset} Creating worktree at ${_wt_dim}'$worktree_path'${_wt_reset} with new branch ${_wt_bold}'$branch_name'${_wt_reset} off of main..."
+    git -C "$WT_REPO_DIR" worktree add -b "$branch_name" "$worktree_path" main
   else
     echo ""
-    echo "${_wt_cyan}→${_wt_reset} Creating worktree using existing branch ${_wt_bold}'$branch_name'${_wt_reset}..."
-    gum spin --spinner dot --title "Creating worktree..." --show-output -- \
-      git -C "$WT_REPO_DIR" worktree add "$worktree_path" "$branch_name"
+    echo "${_wt_cyan}→${_wt_reset} Creating worktree at ${_wt_dim}'$worktree_path'${_wt_reset} using existing branch ${_wt_bold}'$branch_name'${_wt_reset}..."
+    git -C "$WT_REPO_DIR" worktree add "$worktree_path" "$branch_name"
   fi
 
   if [[ $? -eq 0 ]]; then
-    echo "${_wt_green}✓${_wt_reset} Worktree created at: ${_wt_dim}$worktree_path${_wt_reset}"
+    echo ""
+    echo "${_wt_green}✓${_wt_reset} Worktree created successfully at: ${_wt_dim}$worktree_path${_wt_reset}"
 
     # Run post-create hook
     _wt_run_post_create_hook "$WT_POST_CREATE_HOOK" "$worktree_path" "$WT_REPO_DIR"
@@ -663,31 +706,50 @@ delete_worktree() {
     return 0
   fi
 
-  local -a wt_display
+  local -a wt_names wt_commits wt_branches
+  local max_len=4
   local name commit branch
   for wt in "${worktrees[@]}"; do
     name=$(basename "$wt")
     read -r _ commit branch < <(git -C "$WT_REPO_DIR" worktree list | grep "^$wt ")
-    wt_display+=("$name  $branch")
+    wt_names+=("$name")
+    wt_commits+=("$commit")
+    wt_branches+=("$branch")
+    (( ${#name} > max_len )) && max_len=${#name}
   done
 
   echo ""
-  local selection
-  selection=$(gum choose --cursor.foreground 6 \
-    --header "Select a worktree to delete:" "${wt_display[@]}")
-  [[ -z "$selection" ]] && { echo "${_wt_dim}Aborted.${_wt_reset}"; return 0; }
-
-  # Find matching worktree path
-  local target
+  _wt_banner "${_wt_bold}${_wt_cyan}Existing worktrees:${_wt_reset}"
+  echo ""
+  printf "  ${_wt_bold}%-4s  %-${max_len}s  %-9s  %s${_wt_reset}\n" "#" "NAME" "SHA-1" "BRANCH"
+  _wt_table_sep 50
   local i
-  for (( i = 1; i <= ${#wt_display[@]}; i++ )); do
-    if [[ "${wt_display[$i]}" == "$selection" ]]; then
-      target="${worktrees[$i]}"
-      break
-    fi
+  for (( i = 1; i <= ${#wt_names[@]}; i++ )); do
+    printf "  ${_wt_yellow}%-4s${_wt_reset}  %-${max_len}s  ${_wt_dim}%-9s${_wt_reset}  ${_wt_cyan}%s${_wt_reset}\n" "$i)" "${wt_names[$i]}" "${wt_commits[$i]}" "${wt_branches[$i]}"
   done
+  echo ""
 
-  if ! gum confirm "Delete worktree at '$target'?"; then
+  printf "${_wt_cyan}Enter the number of the worktree to delete (or 'q' to quit):${_wt_reset} "
+  read -k 1 selection
+  echo ""
+
+  if [[ "$selection" == "q" || "$selection" == "Q" ]]; then
+    echo "${_wt_dim}Aborted.${_wt_reset}"
+    return 0
+  fi
+
+  if ! [[ "$selection" =~ ^[0-9]+$ ]] || (( selection < 1 || selection > ${#worktrees[@]} )); then
+    echo "${_wt_red}Error:${_wt_reset} invalid selection."
+    return 1
+  fi
+
+  local target="${worktrees[$selection]}"
+
+  printf "${_wt_yellow}Are you sure you want to delete the worktree at${_wt_reset} ${_wt_dim}'$target'${_wt_reset}${_wt_yellow}? [y/N]:${_wt_reset} "
+  read -k 1 confirm
+  echo ""
+
+  if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
     echo "${_wt_dim}Aborted.${_wt_reset}"
     return 0
   fi
@@ -696,8 +758,7 @@ delete_worktree() {
   echo ""
   _wt_run_pre_delete_hook "$WT_PRE_DELETE_HOOK" "$target" "$WT_REPO_DIR" || return 1
 
-  gum spin --spinner dot --title "Removing worktree..." --show-error -- \
-    git -C "$WT_REPO_DIR" worktree remove --force "$target"
+  git -C "$WT_REPO_DIR" worktree remove --force "$target"
 
   if [[ $? -eq 0 ]]; then
     echo "${_wt_green}✓${_wt_reset} Worktree ${_wt_dim}'$target'${_wt_reset} removed successfully."
@@ -719,30 +780,44 @@ open_worktree() {
     return 0
   fi
 
-  local -a wt_display
+  local -a wt_names wt_commits wt_branches
+  local max_len=4
   local name commit branch
   for wt in "${worktrees[@]}"; do
     name=$(basename "$wt")
     read -r _ commit branch < <(git -C "$WT_REPO_DIR" worktree list | grep "^$wt ")
-    wt_display+=("$name  $branch")
+    wt_names+=("$name")
+    wt_commits+=("$commit")
+    wt_branches+=("$branch")
+    (( ${#name} > max_len )) && max_len=${#name}
   done
 
   echo ""
-  local selection
-  selection=$(gum choose --cursor.foreground 6 \
-    --header "Select a worktree to open:" "${wt_display[@]}")
-  [[ -z "$selection" ]] && { echo "${_wt_dim}Aborted.${_wt_reset}"; return 0; }
-
-  # Find matching worktree path
-  local target
+  _wt_banner "${_wt_bold}${_wt_cyan}Select a worktree to open:${_wt_reset}"
+  echo ""
+  printf "  ${_wt_bold}%-4s  %-${max_len}s  %-9s  %s${_wt_reset}\n" "#" "NAME" "SHA-1" "BRANCH"
+  _wt_table_sep 50
   local i
-  for (( i = 1; i <= ${#wt_display[@]}; i++ )); do
-    if [[ "${wt_display[$i]}" == "$selection" ]]; then
-      target="${worktrees[$i]}"
-      break
-    fi
+  for (( i = 1; i <= ${#wt_names[@]}; i++ )); do
+    printf "  ${_wt_yellow}%-4s${_wt_reset}  %-${max_len}s  ${_wt_dim}%-9s${_wt_reset}  ${_wt_cyan}%s${_wt_reset}\n" "$i)" "${wt_names[$i]}" "${wt_commits[$i]}" "${wt_branches[$i]}"
   done
+  echo ""
 
+  printf "${_wt_cyan}Enter the number of the worktree to open (or 'q' to quit):${_wt_reset} "
+  read -k 1 selection
+  echo ""
+
+  if [[ "$selection" == "q" || "$selection" == "Q" ]]; then
+    echo "${_wt_dim}Aborted.${_wt_reset}"
+    return 0
+  fi
+
+  if ! [[ "$selection" =~ ^[0-9]+$ ]] || (( selection < 1 || selection > ${#worktrees[@]} )); then
+    echo "${_wt_red}Error:${_wt_reset} invalid selection."
+    return 1
+  fi
+
+  local target="${worktrees[$selection]}"
   local ide_cmd="${DEFAULT_IDE_CMD:-code}"
 
   echo ""
