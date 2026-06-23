@@ -452,6 +452,325 @@ HOOK_EOF
   echo "${_wt_cyan}→${_wt_reset} Active project: ${_wt_bold}$WT_PROJECT_NAME${_wt_reset}"
 }
 
+# ── Hook scaffolding helpers ──────────────────────────────────────────────────
+_wt_scaffold_hook() {
+  local hook_file="$1" hook_label="$2" project_name="$3"
+
+  mkdir -p "$(dirname "$hook_file")"
+
+  if [[ "$hook_label" == "post-create" ]]; then
+    cat > "$hook_file" <<HOOK_EOF
+#!/usr/bin/env bash
+# Post-create hook for the ${project_name} project.
+# Called after git worktree add.
+# \$1 = worktree_path
+# \$2 = repo_dir (main repo)
+
+set -euo pipefail
+
+WT_PATH="\$1"
+REPO_DIR="\$2"
+
+echo "→ Post-create hook: \$WT_PATH"
+
+# ── Add your project setup here ───────────────────────────────
+# Examples:
+#   cp "\$REPO_DIR/.env.local" "\$WT_PATH/.env.local"
+#   (cd "\$WT_PATH" && npm install)
+#   (cd "\$WT_PATH/backend" && mix deps.get)
+
+echo "→ Post-create hook complete."
+HOOK_EOF
+  else
+    cat > "$hook_file" <<HOOK_EOF
+#!/usr/bin/env bash
+# Pre-delete hook for the ${project_name} project.
+# Called before git worktree remove.
+# \$1 = worktree_path
+# \$2 = repo_dir (main repo)
+#
+# Exit 0 to allow deletion. Exit non-zero to abort deletion.
+
+set -euo pipefail
+
+WT_PATH="\$1"
+REPO_DIR="\$2"
+
+echo "→ Pre-delete check: \$WT_PATH"
+
+# ── Check for uncommitted changes ─────────────────────────────
+if ! git -C "\$WT_PATH" diff --quiet || ! git -C "\$WT_PATH" diff --cached --quiet; then
+  echo "✗ Uncommitted changes in \$WT_PATH"
+  git -C "\$WT_PATH" status --short
+  exit 1
+fi
+
+# ── Check for untracked files ─────────────────────────────────
+UNTRACKED=\$(git -C "\$WT_PATH" ls-files --others --exclude-standard)
+if [[ -n "\$UNTRACKED" ]]; then
+  echo "✗ Untracked files in \$WT_PATH:"
+  echo "\$UNTRACKED" | sed 's/^/  /'
+  exit 1
+fi
+
+# ── Check for unpushed commits ────────────────────────────────
+UPSTREAM=\$(git -C "\$WT_PATH" rev-parse @{u} 2>/dev/null || echo "")
+if [[ -n "\$UPSTREAM" ]]; then
+  LOCAL=\$(git -C "\$WT_PATH" rev-parse HEAD)
+  REMOTE=\$(git -C "\$WT_PATH" rev-parse @{u})
+  if [[ "\$LOCAL" != "\$REMOTE" ]]; then
+    echo "✗ Unpushed commits in \$WT_PATH"
+    git -C "\$WT_PATH" log --oneline @{u}..HEAD
+    exit 1
+  fi
+else
+  echo "  ⚠ No upstream branch set — skipping push check."
+fi
+
+echo "✓ Worktree clean — safe to delete."
+exit 0
+HOOK_EOF
+  fi
+
+  chmod +x "$hook_file"
+  echo "  ${_wt_green}✓${_wt_reset} Created hook: ${_wt_dim}$hook_file${_wt_reset}"
+}
+
+_wt_update_project_hook() {
+  local project_name="$1" hook_label="$2" hook_file="$3"
+  local conf="${PROJECTS_CONF:-$HOME/.config/worktree/projects.conf}"
+  local tmpfile
+  tmpfile=$(mktemp)
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" == "${project_name}|"* ]]; then
+      local -a fields
+      IFS='|' read -rA fields <<< "$line"
+      if [[ "$hook_label" == "post-create" ]]; then
+        fields[4]="$hook_file"
+      else
+        fields[5]="$hook_file"
+      fi
+      line="${fields[1]}|${fields[2]}|${fields[3]}|${fields[4]:-}|${fields[5]:-}"
+    fi
+    printf '%s\n' "$line" >> "$tmpfile"
+  done < "$conf"
+
+  mv "$tmpfile" "$conf"
+}
+
+# ── Manage project hooks ──────────────────────────────────────────────────────
+_wt_manage_hooks() {
+  clear
+  echo ""
+  _wt_banner "${_wt_bold}${_wt_cyan}Manage Project Hooks${_wt_reset} [${_wt_green}$WT_PROJECT_NAME${_wt_reset}]"
+  echo ""
+
+  local _bw=44
+  _wt_box_top $_bw
+  _wt_box_line $_bw "  ${_wt_bold}${_wt_cyan}Select hook type${_wt_reset}"
+  _wt_box_mid $_bw
+  _wt_box_line $_bw "  ${_wt_yellow}1)${_wt_reset} post-create"
+  _wt_box_line $_bw "  ${_wt_yellow}2)${_wt_reset} pre-destroy"
+  _wt_box_empty $_bw
+  _wt_box_line $_bw "  ${_wt_dim}q) Back${_wt_reset}"
+  _wt_box_bottom $_bw
+
+  printf "${_wt_cyan}Enter choice:${_wt_reset} "
+  read -k 1 hook_choice
+  echo ""
+
+  local hook_file hook_label
+  case "$hook_choice" in
+    1)
+      hook_file="$WT_POST_CREATE_HOOK"
+      hook_label="post-create"
+      ;;
+    2)
+      hook_file="$WT_PRE_DELETE_HOOK"
+      hook_label="pre-destroy"
+      ;;
+    q|Q) return 0 ;;
+    *)
+      echo "${_wt_red}Error:${_wt_reset} invalid choice."
+      return 1
+      ;;
+  esac
+
+  if [[ -z "$hook_file" ]]; then
+    local hooks_dir="$HOME/.config/worktree/hooks"
+    if [[ "$hook_label" == "post-create" ]]; then
+      hook_file="$hooks_dir/${WT_PROJECT_NAME}-post-create.sh"
+      WT_POST_CREATE_HOOK="$hook_file"
+    else
+      hook_file="$hooks_dir/${WT_PROJECT_NAME}-pre-delete.sh"
+      WT_PRE_DELETE_HOOK="$hook_file"
+    fi
+    _wt_update_project_hook "$WT_PROJECT_NAME" "$hook_label" "$hook_file"
+  fi
+
+  if [[ ! -f "$hook_file" ]]; then
+    echo "${_wt_yellow}⚠${_wt_reset} Hook file not found, creating scaffold..."
+    _wt_scaffold_hook "$hook_file" "$hook_label" "$WT_PROJECT_NAME"
+  fi
+
+  echo ""
+  echo "${_wt_cyan}→${_wt_reset} Hook: ${_wt_dim}$hook_file${_wt_reset}"
+  echo ""
+
+  _wt_box_top $_bw
+  _wt_box_line $_bw "  ${_wt_bold}${_wt_cyan}What would you like to do?${_wt_reset}"
+  _wt_box_mid $_bw
+  _wt_box_line $_bw "  ${_wt_yellow}1)${_wt_reset} Interactive edit"
+  _wt_box_line $_bw "  ${_wt_yellow}2)${_wt_reset} Open in IDE"
+  _wt_box_empty $_bw
+  _wt_box_line $_bw "  ${_wt_dim}q) Back${_wt_reset}"
+  _wt_box_bottom $_bw
+
+  printf "${_wt_cyan}Enter choice:${_wt_reset} "
+  read -k 1 action_choice
+  echo ""
+
+  case "$action_choice" in
+    1) _wt_hook_interactive_edit "$hook_file" "$hook_label" ;;
+    2)
+      local ide_cmd="${DEFAULT_IDE_CMD:-code}"
+      echo "${_wt_cyan}→${_wt_reset} Opening ${_wt_dim}$hook_file${_wt_reset} in ${_wt_bold}$ide_cmd${_wt_reset}..."
+      $ide_cmd "$hook_file"
+      echo "${_wt_green}✓${_wt_reset} Done."
+      ;;
+    q|Q) return 0 ;;
+    *)
+      echo "${_wt_red}Error:${_wt_reset} invalid choice."
+      return 1
+      ;;
+  esac
+}
+
+_wt_hook_interactive_edit() {
+  local hook_file="$1"
+  local hook_label="$2"
+
+  echo ""
+  local _bw=44
+  _wt_box_top $_bw
+  _wt_box_line $_bw "  ${_wt_bold}${_wt_cyan}Add action to $hook_label hook${_wt_reset}"
+  _wt_box_mid $_bw
+  _wt_box_line $_bw "  ${_wt_yellow}1)${_wt_reset} Copy a file"
+  _wt_box_line $_bw "  ${_wt_yellow}2)${_wt_reset} Copy a directory"
+  _wt_box_line $_bw "  ${_wt_yellow}3)${_wt_reset} Run a command"
+  _wt_box_empty $_bw
+  _wt_box_line $_bw "  ${_wt_dim}q) Back${_wt_reset}"
+  _wt_box_bottom $_bw
+
+  printf "${_wt_cyan}Enter choice:${_wt_reset} "
+  read -k 1 edit_choice
+  echo ""
+
+  case "$edit_choice" in
+    1) _wt_hook_add_copy_file "$hook_file" ;;
+    2) _wt_hook_add_copy_dir "$hook_file" ;;
+    3) _wt_hook_add_command "$hook_file" ;;
+    q|Q) return 0 ;;
+    *)
+      echo "${_wt_red}Error:${_wt_reset} invalid choice."
+      return 1
+      ;;
+  esac
+}
+
+_wt_hook_add_copy_file() {
+  local hook_file="$1"
+
+  echo ""
+  printf "${_wt_cyan}Source path (relative to repo root):${_wt_reset} "
+  local src_path
+  read src_path
+  if [[ -z "$src_path" ]]; then
+    echo "${_wt_red}Error:${_wt_reset} source path cannot be empty."
+    return 1
+  fi
+
+  local dest_path="$src_path"
+  vared -p "${_wt_cyan}Destination path (relative to worktree root):${_wt_reset} " dest_path
+  if [[ -z "$dest_path" ]]; then
+    echo "${_wt_red}Error:${_wt_reset} destination path cannot be empty."
+    return 1
+  fi
+
+  local cmd='cp "$REPO_DIR/'"$src_path"'" "$WT_PATH/'"$dest_path"'"'
+  _wt_hook_insert_line "$hook_file" "$cmd"
+}
+
+_wt_hook_add_copy_dir() {
+  local hook_file="$1"
+
+  echo ""
+  printf "${_wt_cyan}Source directory (relative to repo root):${_wt_reset} "
+  local src_path
+  read src_path
+  if [[ -z "$src_path" ]]; then
+    echo "${_wt_red}Error:${_wt_reset} source path cannot be empty."
+    return 1
+  fi
+
+  local dest_path="$src_path"
+  vared -p "${_wt_cyan}Destination directory (relative to worktree root):${_wt_reset} " dest_path
+  if [[ -z "$dest_path" ]]; then
+    echo "${_wt_red}Error:${_wt_reset} destination path cannot be empty."
+    return 1
+  fi
+
+  local cmd='cp -r "$REPO_DIR/'"$src_path"'" "$WT_PATH/'"$dest_path"'"'
+  _wt_hook_insert_line "$hook_file" "$cmd"
+}
+
+_wt_hook_add_command() {
+  local hook_file="$1"
+
+  echo ""
+  printf "${_wt_cyan}Command to run (executed in worktree root):${_wt_reset} "
+  local user_cmd
+  read user_cmd
+  if [[ -z "$user_cmd" ]]; then
+    echo "${_wt_red}Error:${_wt_reset} command cannot be empty."
+    return 1
+  fi
+
+  local cmd='(cd "$WT_PATH" && '"$user_cmd"')'
+  _wt_hook_insert_line "$hook_file" "$cmd"
+}
+
+_wt_hook_insert_line() {
+  local hook_file="$1"
+  local new_line="$2"
+  local tmpfile
+  tmpfile=$(mktemp)
+  local inserted=0
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if (( ! inserted )); then
+      if [[ "$line" == *'Post-create hook complete'* ]] || \
+         [[ "$line" == *'Worktree clean'* ]] || \
+         [[ "$line" == *'safe to delete'* ]]; then
+        printf '%s\n' "$new_line" >> "$tmpfile"
+        inserted=1
+      fi
+    fi
+    printf '%s\n' "$line" >> "$tmpfile"
+  done < "$hook_file"
+
+  if (( ! inserted )); then
+    printf '%s\n' "$new_line" >> "$tmpfile"
+  fi
+
+  mv "$tmpfile" "$hook_file"
+  chmod +x "$hook_file"
+
+  echo ""
+  echo "${_wt_green}✓${_wt_reset} Added to hook: ${_wt_dim}$new_line${_wt_reset}"
+}
+
 # ── Main menu ──────────────────────────────────────────────────────────────────
 worktree() {
   _wt_load_config || return 1
@@ -474,8 +793,9 @@ worktree() {
     _wt_box_line $_bw "  ${_wt_yellow}3)${_wt_reset} Delete an existing worktree"
     _wt_box_line $_bw "  ${_wt_yellow}4)${_wt_reset} List all worktrees"
     _wt_box_line $_bw "  ${_wt_yellow}5)${_wt_reset} Merge main into a worktree branch"
+    _wt_box_line $_bw "  ${_wt_yellow}6)${_wt_reset} Manage project hooks"
     if (( multi_project )); then
-      _wt_box_line $_bw "  ${_wt_yellow}6)${_wt_reset} Switch project"
+      _wt_box_line $_bw "  ${_wt_yellow}7)${_wt_reset} Switch project"
     fi
     _wt_box_empty $_bw
     _wt_box_line $_bw "  ${_wt_dim}q) Quit${_wt_reset}"
@@ -490,7 +810,8 @@ worktree() {
       3) delete_worktree ;;
       4) list_worktrees ;;
       5) merge_main_into_worktree ;;
-      6)
+      6) _wt_manage_hooks ;;
+      7)
         if (( multi_project )); then
           _wt_select_project || true
           multi_project=$(( ${#_WT_PROJECT_NAMES[@]} > 1 ))
@@ -616,18 +937,25 @@ new_worktree() {
 
   clear
   echo ""
-  _wt_banner "${_wt_bold}${_wt_cyan}Git Worktree Creator${_wt_reset}"
-  echo ""
-  echo "Would you like to:"
-  echo "  ${_wt_yellow}1)${_wt_reset} Create a new branch off of main"
-  echo "  ${_wt_yellow}2)${_wt_reset} Use an existing branch"
-  echo ""
+  local _menu_title="  ${_wt_bold}${_wt_cyan}Git Worktree Creator${_wt_reset}  "
+  local _bw=$(_wt_visible_len "$_menu_title")
+  (( _bw < 44 )) && _bw=44
+  _wt_box_top $_bw
+  _wt_box_line $_bw "$_menu_title"
+  _wt_box_mid $_bw
+  _wt_box_line $_bw "  ${_wt_yellow}1)${_wt_reset} Create a new branch off of main"
+  _wt_box_line $_bw "  ${_wt_yellow}2)${_wt_reset} Use an existing branch"
+  _wt_box_empty $_bw
+  _wt_box_line $_bw "  ${_wt_dim}q) Back${_wt_reset}"
+  _wt_box_bottom $_bw
   printf "${_wt_cyan}Enter choice [1/2]:${_wt_reset} "
   read -k 1 branch_choice
   echo ""
 
   local branch_name
-  if [[ "$branch_choice" == "1" ]]; then
+  if [[ "$branch_choice" == "q" || "$branch_choice" == "Q" ]]; then
+    return 0
+  elif [[ "$branch_choice" == "1" ]]; then
     printf "${_wt_cyan}Enter the name for the new branch:${_wt_reset} "
     read branch_name
     if [[ -z "$branch_name" ]]; then
@@ -707,7 +1035,7 @@ delete_worktree() {
   fi
 
   local -a wt_names wt_commits wt_branches
-  local max_len=4
+  local max_len=4 max_branch=6
   local name commit branch
   for wt in "${worktrees[@]}"; do
     name=$(basename "$wt")
@@ -716,20 +1044,33 @@ delete_worktree() {
     wt_commits+=("$commit")
     wt_branches+=("$branch")
     (( ${#name} > max_len )) && max_len=${#name}
+    (( ${#branch} > max_branch )) && max_branch=${#branch}
   done
 
+  clear
   echo ""
-  _wt_banner "${_wt_bold}${_wt_cyan}Existing worktrees:${_wt_reset}"
-  echo ""
-  printf "  ${_wt_bold}%-4s  %-${max_len}s  %-9s  %s${_wt_reset}\n" "#" "NAME" "SHA-1" "BRANCH"
-  _wt_table_sep 50
+  local _menu_title="  ${_wt_bold}${_wt_cyan}Delete Worktree${_wt_reset} [${_wt_green}$WT_PROJECT_NAME${_wt_reset}]  "
+  local _bw=$(_wt_visible_len "$_menu_title")
+  (( _bw < 44 )) && _bw=44
+
+  # Calculate table width and ensure box is wide enough
+  local _tbl_w=$(( 2 + 4 + 2 + max_len + 2 + 9 + 2 + max_branch + 2 ))
+  (( _tbl_w > _bw )) && _bw=$_tbl_w
+
+  _wt_box_top $_bw
+  _wt_box_line $_bw "$_menu_title"
+  _wt_box_mid $_bw
+  _wt_box_empty $_bw
+  _wt_box_line $_bw "$(printf "  ${_wt_bold}%-4s  %-${max_len}s  %-9s  %s${_wt_reset}" "#" "NAME" "SHA-1" "BRANCH")"
+  _wt_box_line $_bw "  $(printf '─%.0s' {1..$((_bw - 4))})"
   local i
   for (( i = 1; i <= ${#wt_names[@]}; i++ )); do
-    printf "  ${_wt_yellow}%-4s${_wt_reset}  %-${max_len}s  ${_wt_dim}%-9s${_wt_reset}  ${_wt_cyan}%s${_wt_reset}\n" "$i)" "${wt_names[$i]}" "${wt_commits[$i]}" "${wt_branches[$i]}"
+    _wt_box_line $_bw "$(printf "  ${_wt_yellow}%-4s${_wt_reset}  %-${max_len}s  ${_wt_dim}%-9s${_wt_reset}  ${_wt_cyan}%s${_wt_reset}" "$i)" "${wt_names[$i]}" "${wt_commits[$i]}" "${wt_branches[$i]}")"
   done
-  echo ""
-
-  printf "${_wt_cyan}Enter the number of the worktree to delete (or 'q' to quit):${_wt_reset} "
+  _wt_box_empty $_bw
+  _wt_box_line $_bw "  ${_wt_dim}q) Back${_wt_reset}"
+  _wt_box_bottom $_bw
+  printf "${_wt_cyan}Enter choice:${_wt_reset} "
   read -k 1 selection
   echo ""
 
