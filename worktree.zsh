@@ -347,7 +347,7 @@ register_project() {
     cat > "$post_hook" <<HOOK_EOF
 #!/usr/bin/env bash
 # Post-create hook for the ${project_name} project.
-# Called after git worktree add.
+# Called by _wt_create after git worktree add.
 # \$1 = worktree_path
 # \$2 = repo_dir (main repo)
 
@@ -358,11 +358,22 @@ REPO_DIR="\$2"
 
 echo "→ Post-create hook: \$WT_PATH"
 
-# ── Add your project setup here ───────────────────────────────
-# Examples:
-#   cp "\$REPO_DIR/.env.local" "\$WT_PATH/.env.local"
-#   (cd "\$WT_PATH" && npm install)
-#   (cd "\$WT_PATH/backend" && mix deps.get)
+# ── Artifacts to copy from main repo ─────────────────────────
+ARTIFACTS=()
+
+for entry in "\${ARTIFACTS[@]}"; do
+  src="\$REPO_DIR/\$entry"
+  dest="\$WT_PATH/\$entry"
+  if [[ -d "\$src" ]]; then
+    mkdir -p "\$dest" && cp -r "\$src/." "\$dest/"
+    echo "  ✓ \$entry/"
+  elif [[ -f "\$src" ]]; then
+    mkdir -p "\$(dirname "\$dest")" && cp "\$src" "\$dest"
+    echo "  ✓ \$entry"
+  else
+    echo "  ⚠ \$entry not found in source, skipping."
+  fi
+done
 
 echo "→ Post-create hook complete."
 HOOK_EOF
@@ -376,7 +387,7 @@ HOOK_EOF
     cat > "$pre_hook" <<HOOK_EOF
 #!/usr/bin/env bash
 # Pre-delete hook for the ${project_name} project.
-# Called before git worktree remove.
+# Called by delete_worktree before git worktree remove.
 # \$1 = worktree_path
 # \$2 = repo_dir (main repo)
 #
@@ -388,6 +399,12 @@ WT_PATH="\$1"
 REPO_DIR="\$2"
 
 echo "→ Pre-delete check: \$WT_PATH"
+
+# ── If the worktree directory no longer exists, nothing to protect ─
+if [[ ! -d "\$WT_PATH" ]]; then
+  echo "✓ Worktree already removed from disk — safe to delete."
+  exit 0
+fi
 
 # ── Check for uncommitted changes ─────────────────────────────
 if ! git -C "\$WT_PATH" diff --quiet || ! git -C "\$WT_PATH" diff --cached --quiet; then
@@ -462,7 +479,7 @@ _wt_scaffold_hook() {
     cat > "$hook_file" <<HOOK_EOF
 #!/usr/bin/env bash
 # Post-create hook for the ${project_name} project.
-# Called after git worktree add.
+# Called by _wt_create after git worktree add.
 # \$1 = worktree_path
 # \$2 = repo_dir (main repo)
 
@@ -473,11 +490,22 @@ REPO_DIR="\$2"
 
 echo "→ Post-create hook: \$WT_PATH"
 
-# ── Add your project setup here ───────────────────────────────
-# Examples:
-#   cp "\$REPO_DIR/.env.local" "\$WT_PATH/.env.local"
-#   (cd "\$WT_PATH" && npm install)
-#   (cd "\$WT_PATH/backend" && mix deps.get)
+# ── Artifacts to copy from main repo ─────────────────────────
+ARTIFACTS=()
+
+for entry in "\${ARTIFACTS[@]}"; do
+  src="\$REPO_DIR/\$entry"
+  dest="\$WT_PATH/\$entry"
+  if [[ -d "\$src" ]]; then
+    mkdir -p "\$dest" && cp -r "\$src/." "\$dest/"
+    echo "  ✓ \$entry/"
+  elif [[ -f "\$src" ]]; then
+    mkdir -p "\$(dirname "\$dest")" && cp "\$src" "\$dest"
+    echo "  ✓ \$entry"
+  else
+    echo "  ⚠ \$entry not found in source, skipping."
+  fi
+done
 
 echo "→ Post-create hook complete."
 HOOK_EOF
@@ -485,7 +513,7 @@ HOOK_EOF
     cat > "$hook_file" <<HOOK_EOF
 #!/usr/bin/env bash
 # Pre-delete hook for the ${project_name} project.
-# Called before git worktree remove.
+# Called by delete_worktree before git worktree remove.
 # \$1 = worktree_path
 # \$2 = repo_dir (main repo)
 #
@@ -497,6 +525,12 @@ WT_PATH="\$1"
 REPO_DIR="\$2"
 
 echo "→ Pre-delete check: \$WT_PATH"
+
+# ── If the worktree directory no longer exists, nothing to protect ─
+if [[ ! -d "\$WT_PATH" ]]; then
+  echo "✓ Worktree already removed from disk — safe to delete."
+  exit 0
+fi
 
 # ── Check for uncommitted changes ─────────────────────────────
 if ! git -C "\$WT_PATH" diff --quiet || ! git -C "\$WT_PATH" diff --cached --quiet; then

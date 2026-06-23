@@ -205,6 +205,61 @@ echo "✓ Worktree clean — safe to delete."
 exit 0
 ```
 
+### What else can go in the pre-delete hook
+
+Beyond the safety checks in the scaffold, the pre-delete hook is a good place for any teardown that should happen before the worktree directory is removed. Because it is **blocking**, you can abort the deletion if anything goes wrong.
+
+**Close open processes / release ports**
+
+```bash
+# Kill a dev server that wrote its PID to a file in the worktree
+PID_FILE="$WT_PATH/.dev.pid"
+if [[ -f "$PID_FILE" ]]; then
+  kill "$(cat "$PID_FILE")" 2>/dev/null || true
+  rm -f "$PID_FILE"
+fi
+```
+
+**Remove remote tracking branch**
+
+```bash
+BRANCH=$(git -C "$WT_PATH" rev-parse --abbrev-ref HEAD)
+if git -C "$WT_PATH" ls-remote --exit-code origin "$BRANCH" &>/dev/null; then
+  git -C "$WT_PATH" push origin --delete "$BRANCH"
+fi
+```
+
+**Archive uncommitted work instead of blocking**
+
+```bash
+if ! git -C "$WT_PATH" diff --quiet || ! git -C "$WT_PATH" diff --cached --quiet; then
+  ARCHIVE="$HOME/worktree-archives/$(basename "$WT_PATH")-$(date +%Y%m%d%H%M%S).patch"
+  mkdir -p "$(dirname "$ARCHIVE")"
+  git -C "$WT_PATH" diff HEAD > "$ARCHIVE"
+  echo "Warning: Saved uncommitted diff to $ARCHIVE"
+fi
+```
+
+**Clean up infrastructure (Docker containers, local DB, etc.)**
+
+```bash
+CONTAINER="myapp-$(basename "$WT_PATH")"
+if docker ps -q --filter "name=$CONTAINER" | grep -q .; then
+  docker rm -f "$CONTAINER"
+fi
+```
+
+**Post to Slack / log the deletion**
+
+```bash
+BRANCH=$(git -C "$WT_PATH" rev-parse --abbrev-ref HEAD)
+curl -s -X POST "$SLACK_WEBHOOK" \
+  -H 'Content-type: application/json' \
+  --data "{\"text\":\"Worktree deleted: $BRANCH\"}" || true
+```
+
+> **Tip:** If a step should never block the deletion, append `|| true` so a failure is swallowed. Only `exit 1` (or a command that exits non-zero without `|| true`) will abort the deletion.
+
 ---
 
 ## Config reference
