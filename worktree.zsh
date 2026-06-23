@@ -278,6 +278,7 @@ register_project() {
   local conf="${PROJECTS_CONF:-$HOME/.config/worktree/projects.conf}"
   local hooks_dir="$HOME/.config/worktree/hooks"
 
+  clear
   echo ""
   _wt_banner "${_wt_bold}${_wt_cyan}Register New Project${_wt_reset}"
 
@@ -587,6 +588,7 @@ merge_main_into_worktree() {
     (( ${#name} > max_len )) && max_len=${#name}
   done
 
+  clear
   echo ""
   _wt_banner "${_wt_bold}${_wt_cyan}Select a worktree to merge main into:${_wt_reset}"
   echo ""
@@ -616,6 +618,7 @@ merge_main_into_worktree() {
   local target_branch
   target_branch=$(echo "${wt_branches[$selection]}" | tr -d '[]')
 
+  clear
   echo ""
   echo "${_wt_cyan}→${_wt_reset} Pulling latest main in ${_wt_dim}$WT_REPO_DIR${_wt_reset}..."
   git -C "$WT_REPO_DIR" checkout main && git -C "$WT_REPO_DIR" pull origin main
@@ -630,6 +633,20 @@ merge_main_into_worktree() {
   if [[ $? -eq 0 ]]; then
     echo ""
     echo "${_wt_green}✓${_wt_reset} ${_wt_bold}main${_wt_reset} merged into ${_wt_bold}'$target_branch'${_wt_reset} successfully."
+    echo ""
+    printf "  Push the branch now? ${_wt_dim}(y/n)${_wt_reset} "
+    read -k 1 _wt_push_reply
+    echo ""
+    if [[ "$_wt_push_reply" == "y" || "$_wt_push_reply" == "Y" ]]; then
+      clear
+      echo "${_wt_cyan}→${_wt_reset} Pushing ${_wt_bold}'$target_branch'${_wt_reset}..."
+      git -C "$target" push -u origin "$target_branch"
+      if [[ $? -eq 0 ]]; then
+        echo "${_wt_green}✓${_wt_reset} Branch ${_wt_bold}'$target_branch'${_wt_reset} pushed."
+      else
+        echo "${_wt_red}✗${_wt_reset} Push failed."
+      fi
+    fi
   else
     echo ""
     echo "${_wt_red}✗${_wt_reset} Merge encountered conflicts. Resolve them in: ${_wt_dim}$target${_wt_reset}"
@@ -839,6 +856,7 @@ open_worktree() {
     (( ${#name} > max_len )) && max_len=${#name}
   done
 
+  clear
   echo ""
   _wt_banner "${_wt_bold}${_wt_cyan}Select a worktree to open:${_wt_reset}"
   echo ""

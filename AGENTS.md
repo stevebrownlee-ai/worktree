@@ -30,3 +30,6 @@ All code is zsh (main CLI) and bash (hooks, installer). No other languages or bu
 - `projects.conf` uses `|` as delimiter. Comments start with `#`.
 - fzf is a required dependency for interactive branch selection.
 - No tests exist. Validate changes by sourcing `worktree.zsh` in a zsh shell and running `worktree`.
+- Whenever a new menu is presented to the user, the `clear` command must be executed before the menu is show.
+- When waiting for a menu choice, or a Y/N choice, act on keypress. Do not wait for the RETURN key to be pressed
+- Whenever any Github action is executed, the `clear` command must be executed before it.
