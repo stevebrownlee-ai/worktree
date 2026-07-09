@@ -15,12 +15,14 @@ echo "→ Post-create hook: $WT_PATH"
 ARTIFACTS=(
   .agents/workflows
   .agents/protocols
+  .agents/skills
   .pilot
   frontend/node_modules
   frontend/.env.local
   backend/_build
   backend/deps
   backend/config/dev.secret.exs
+  AGENTS.md
 )
 
 for entry in "${ARTIFACTS[@]}"; do

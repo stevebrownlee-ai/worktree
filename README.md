@@ -82,14 +82,17 @@ worktree
 On first launch (or when switching projects), you'll see the project picker:
 
 ```
-Select a project:
-  1)  myapp   /path/to/myapp
-  2)  Register a new project
-
+╭──────────────────────────────────────────╮
+│  Select a project                        │
+├──────────────────────────────────────────┤
+│  1)  myapp   /path/to/myapp              │
+│                                          │
+│  n)  Register a new project              │
+╰──────────────────────────────────────────╯
 Enter choice:
 ```
 
-Choose **"Register a new project"** to add your first project. The tool will prompt for:
+Press a number key to select a project, or **`n`** to register a new one. The tool will prompt for:
 - Project name
 - Repo directory (must be an existing git repo)
 - Worktrees directory (defaults to `<repo>.worktrees`)
@@ -101,16 +104,19 @@ If only one project is registered, it is selected automatically and the picker i
 ### Main menu
 
 ```
-Git Worktree Manager [myapp]
------------------------------
-  1) Create a new worktree
-  2) Open a worktree in IDE
-  3) Delete an existing worktree
-  4) List all worktrees
-  5) Merge main into a worktree branch
-  6) Switch project
-
-  q) Quit
+╭──────────────────────────────────────────────╮
+│  Git Worktree Manager [myapp]                │
+├──────────────────────────────────────────────┤
+│  1) Create a new worktree                    │
+│  2) Open a worktree in IDE                   │
+│  3) Delete an existing worktree              │
+│  4) List all worktrees                       │
+│  5) Merge main into a worktree branch        │
+│  6) Switch project                           │
+│                                              │
+│  q) Quit                                     │
+╰──────────────────────────────────────────────╯
+Enter choice:
 ```
 
 > **Note:** Option 6 "Switch project" is only shown when 2+ projects are registered. The project picker also includes "Register a new project" as the last option.
@@ -125,7 +131,7 @@ Git Worktree Manager [myapp]
 | 2 | Open   | Lists worktrees and opens the selected one in the IDE configured by `DEFAULT_IDE_CMD` |
 | 3 | Delete | Runs the pre-delete hook (blocks if hook exits non-zero), then removes the worktree |
 | 4 | List   | Displays all worktrees in an aligned table (NAME / SHA-1 / BRANCH) |
-| 5 | Merge  | Pulls `main` in the main repo, then merges it into the selected worktree's branch |
+| 5 | Merge  | Pulls `main` in the main repo, merges it into the selected worktree's branch, then prompts to push the branch to origin |
 | 6 | Switch | Re-opens the project picker (only shown with 2+ projects) |
 
 ---

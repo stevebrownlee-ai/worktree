@@ -423,13 +423,12 @@ if [[ -n "\$UNTRACKED" ]]; then
 fi
 
 # ── Check for unpushed commits ────────────────────────────────
-UPSTREAM=\$(git -C "\$WT_PATH" rev-parse @{u} 2>/dev/null || echo "")
-if [[ -n "\$UPSTREAM" ]]; then
+if git -C "\$WT_PATH" rev-parse --abbrev-ref '@{u}' >/dev/null 2>&1; then
   LOCAL=\$(git -C "\$WT_PATH" rev-parse HEAD)
-  REMOTE=\$(git -C "\$WT_PATH" rev-parse @{u})
+  REMOTE=\$(git -C "\$WT_PATH" rev-parse '@{u}')
   if [[ "\$LOCAL" != "\$REMOTE" ]]; then
     echo "✗ Unpushed commits in \$WT_PATH"
-    git -C "\$WT_PATH" log --oneline @{u}..HEAD
+    git -C "\$WT_PATH" log --oneline '@{u}..HEAD'
     exit 1
   fi
 else
