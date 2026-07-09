@@ -11,21 +11,39 @@ REPO_DIR="$2"
 
 echo "→ Post-create hook: $WT_PATH"
 
-# ── Artifacts to copy from main repo ─────────────────────────
-ARTIFACTS=(
+# ── Large artifact dirs: symlink (fast, no duplication, paths stay valid) ──
+# Copying node_modules breaks .bin/ wrapper scripts whose internal paths
+# are rooted at the original install location.
+SYMLINK_DIRS=(
+  frontend/node_modules
+  backend/_build
+  backend/deps
+)
+
+for entry in "${SYMLINK_DIRS[@]}"; do
+  src="$REPO_DIR/$entry"
+  dest="$WT_PATH/$entry"
+  if [[ -e "$src" ]]; then
+    mkdir -p "$(dirname "$dest")"
+    ln -sfn "$src" "$dest"
+    echo "  ✓ $entry → (symlink)"
+  else
+    echo "  ⚠ $entry not found in source, skipping."
+  fi
+done
+
+# ── Config / small files: copy so each worktree can diverge independently ──
+COPY_ARTIFACTS=(
   .agents/workflows
   .agents/protocols
   .agents/skills
   .pilot
-  frontend/node_modules
   frontend/.env.local
-  backend/_build
-  backend/deps
   backend/config/dev.secret.exs
   AGENTS.md
 )
 
-for entry in "${ARTIFACTS[@]}"; do
+for entry in "${COPY_ARTIFACTS[@]}"; do
   src="$REPO_DIR/$entry"
   dest="$WT_PATH/$entry"
   if [[ -d "$src" ]]; then
