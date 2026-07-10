@@ -38,6 +38,7 @@ COPY_ARTIFACTS=(
   .agents/protocols
   .agents/skills
   .pilot
+  .env.prd
   frontend/.env.local
   backend/config/dev.secret.exs
   AGENTS.md

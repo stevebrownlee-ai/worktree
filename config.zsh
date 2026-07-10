@@ -4,5 +4,6 @@
 
 # Command used to open a worktree directory in your IDE
 # e.g. "code", "cursor", "antigravity-ide", "zed"
-DEFAULT_IDE_CMD="pi"
+DEFAULT_IDE_CMD="omp"
+# DEFAULT_IDE_CMD="pi"
 # DEFAULT_IDE_CMD="antigravity-ide"
