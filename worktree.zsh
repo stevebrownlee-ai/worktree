@@ -214,6 +214,35 @@ _wt_select_project() {
   return 0
 }
 
+# ── Run an IDE-open hook (optional, per-project/per-IDE) ──────────────────────
+# Hook path: hooks/<project>-open-<ide_cmd>.sh
+# $1 = worktree_path, $2 = repo_dir
+# If the hook exists and is executable it fully replaces the default open behavior.
+# Otherwise falls back to: cd "$worktree_path" && $ide_cmd .
+_wt_run_ide_open_hook() {
+  local worktree_path="$1"
+  local repo_dir="$2"
+  local ide_cmd="${DEFAULT_IDE_CMD:-code}"
+  local hook="$HOME/.config/worktree/hooks/${WT_PROJECT_NAME}-open-${ide_cmd}.sh"
+
+  if [[ -f "$hook" ]]; then
+    if [[ ! -x "$hook" ]]; then
+      echo "  ${_wt_yellow}⚠${_wt_reset} IDE-open hook not executable, attempting chmod +x..."
+      chmod +x "$hook" || { echo "  ${_wt_yellow}⚠${_wt_reset} chmod failed, falling back to default open."; }
+    fi
+    if [[ -x "$hook" ]]; then
+      echo "  ${_wt_cyan}→${_wt_reset} IDE-open hook: ${_wt_dim}$hook${_wt_reset}"
+      "$hook" "$worktree_path" "$repo_dir"
+      return $?
+    fi
+  fi
+
+  # Fallback: default behavior
+  cd "$worktree_path" && $ide_cmd .
+  cd -
+  return 0
+}
+
 # ── Run a post-create hook (non-blocking) ──────────────────────────────────────
 _wt_run_post_create_hook() {
   local hook="$1"
@@ -731,8 +760,14 @@ new_worktree() {
     _wt_run_post_create_hook "$WT_POST_CREATE_HOOK" "$worktree_path" "$WT_REPO_DIR"
 
     echo ""
-    echo "${_wt_cyan}→${_wt_reset} Opening worktree in ${_wt_bold}${DEFAULT_IDE_CMD:-code}${_wt_reset}..."
-    cd "$worktree_path" && ${DEFAULT_IDE_CMD:-code} .
+    printf "  Open in ${_wt_bold}${DEFAULT_IDE_CMD:-code}${_wt_reset}? ${_wt_dim}(y/n)${_wt_reset} "
+    read -k 1 _wt_open_reply
+    echo ""
+    if [[ "$_wt_open_reply" == "y" || "$_wt_open_reply" == "Y" ]]; then
+      clear
+      echo "${_wt_cyan}→${_wt_reset} Opening worktree in ${_wt_bold}${DEFAULT_IDE_CMD:-code}${_wt_reset}..."
+      _wt_run_ide_open_hook "$worktree_path" "$WT_REPO_DIR"
+    fi
 
     cd "$ORIGINAL_DIR"
     echo ""
@@ -886,7 +921,6 @@ open_worktree() {
 
   echo ""
   echo "${_wt_cyan}→${_wt_reset} Opening worktree in ${_wt_bold}$ide_cmd${_wt_reset}..."
-  cd "$target" && $ide_cmd .
-  cd -
+  _wt_run_ide_open_hook "$target" "$WT_REPO_DIR"
   echo "${_wt_green}✓${_wt_reset} Done."
 }
