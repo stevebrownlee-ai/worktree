@@ -16,7 +16,6 @@ echo "→ Post-create hook: $WT_PATH"
 # are rooted at the original install location.
 SYMLINK_DIRS=(
   frontend/node_modules
-  backend/_build
   backend/deps
 )
 

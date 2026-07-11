@@ -715,12 +715,19 @@ new_worktree() {
     fi
   elif [[ "$branch_choice" == "2" ]]; then
     echo ""
-    echo "Type to fuzzy-search local branches (ESC to cancel):"
-    branch_name=$(git -C "$WT_REPO_DIR" branch --format='%(refname:short)' \
-      | fzf --height=40% --reverse --border \
-            --prompt="Branch> " \
-            --header="Select an existing branch" \
-            --no-multi)
+    echo "Type to fuzzy-search branches (ESC to cancel):"
+    branch_name=$(
+      {
+        git -C "$WT_REPO_DIR" branch --format='%(refname:short)'
+        git -C "$WT_REPO_DIR" branch -r --format='%(refname:short)' \
+          | sed 's|^origin/||' \
+          | grep -v '^HEAD$'
+      } | sort -u \
+        | fzf --height=40% --reverse --border \
+              --prompt="Branch> " \
+              --header="Select an existing branch (local + remote)" \
+              --no-multi
+    )
     if [[ -z "$branch_name" ]]; then
       echo "${_wt_yellow}No branch selected. Aborting.${_wt_reset}"
       return 1
@@ -749,7 +756,19 @@ new_worktree() {
   else
     echo ""
     echo "${_wt_cyan}→${_wt_reset} Creating worktree at ${_wt_dim}'$worktree_path'${_wt_reset} using existing branch ${_wt_bold}'$branch_name'${_wt_reset}..."
-    git -C "$WT_REPO_DIR" worktree add "$worktree_path" "$branch_name"
+    # If the branch doesn't exist locally but does exist as a remote-tracking ref,
+    # create a local tracking branch automatically.
+    if ! git -C "$WT_REPO_DIR" show-ref --verify --quiet "refs/heads/$branch_name"; then
+      if git -C "$WT_REPO_DIR" show-ref --verify --quiet "refs/remotes/origin/$branch_name"; then
+        echo "  ${_wt_cyan}→${_wt_reset} Remote-only branch detected — creating local tracking branch..."
+        git -C "$WT_REPO_DIR" worktree add --track -b "$branch_name" "$worktree_path" "origin/$branch_name"
+      else
+        echo "${_wt_red}✗${_wt_reset} Branch '${branch_name}' not found locally or in origin."
+        return 1
+      fi
+    else
+      git -C "$WT_REPO_DIR" worktree add "$worktree_path" "$branch_name"
+    fi
   fi
 
   if [[ $? -eq 0 ]]; then
