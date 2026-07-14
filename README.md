@@ -22,8 +22,9 @@ listing, and merging worktrees across multiple git repositories.
   config.zsh          # Global settings (IDE command)
   projects.conf       # Project registry (one project per line)
   hooks/
-    <project>-post-create.sh   # Runs after worktree creation (auto-scaffolded)
-    <project>-pre-delete.sh    # Runs before worktree deletion (auto-scaffolded)
+    <project>-post-create.sh        # Runs after worktree creation (auto-scaffolded)
+    <project>-pre-delete.sh         # Runs before worktree deletion (auto-scaffolded)
+    <project>-open-<ide_cmd>.sh     # Optional: replaces default IDE open behavior
 ```
 
 ---
@@ -138,7 +139,7 @@ Enter choice:
 
 ## Hook Scripts
 
-Hook scripts live in `~/.config/worktree/hooks/` and are named `<project>-post-create.sh` and `<project>-pre-delete.sh`. They are created automatically when you register a project.
+Hook scripts live in `~/.config/worktree/hooks/`. Post-create and pre-delete hooks are created automatically when you register a project. The IDE-open hook is optional and must be created manually.
 
 ### Post-Create Hook
 
@@ -265,6 +266,78 @@ curl -s -X POST "$SLACK_WEBHOOK" \
 ```
 
 > **Tip:** If a step should never block the deletion, append `|| true` so a failure is swallowed. Only `exit 1` (or a command that exits non-zero without `|| true`) will abort the deletion.
+
+### IDE-Open Hook
+
+**Filename:** `~/.config/worktree/hooks/<project>-open-<ide_cmd>.sh`
+
+Runs when a worktree is opened via **menu option 2 (Open)** or immediately after **option 1 (Create)**. When the hook file exists and is executable, it **fully replaces** the default open behavior (`cd <worktree> && $DEFAULT_IDE_CMD .`). If the hook is absent, the default behavior runs unchanged.
+
+The hook name is derived automatically from the current project name and `DEFAULT_IDE_CMD`. For example, if your project is `firsthand` and `DEFAULT_IDE_CMD=omp`, the hook resolved is:
+
+```
+~/.config/worktree/hooks/firsthand-open-omp.sh
+```
+
+**Arguments:**
+
+| Arg | Value |
+|-----|-------|
+| `$1` | Absolute path to the worktree directory |
+| `$2` | Absolute path to the main repo directory |
+
+**When to use it:** any time the default `$IDE_CMD .` is not enough — e.g. you need a custom tmux layout, multiple panes, or pre-launch commands before the editor opens.
+
+**Example — tmux layout with three panes:**
+
+```bash
+#!/usr/bin/env bash
+# ~/.config/worktree/hooks/firsthand-open-omp.sh
+# Tmux layout:
+#
+#   ┌─────────────────────────────┐
+#   │  pane 0 — omp .  (60%)      │
+#   ├──────────────┬──────────────┤
+#   │  pane 1      │  pane 2      │
+#   │  cd backend  │  cd frontend │
+#   └──────────────┴──────────────┘
+
+set -euo pipefail
+WT_PATH="$1"
+WT_NAME="$(basename "$WT_PATH")"
+
+if [[ -z "${TMUX:-}" ]]; then
+  echo "✗ Not inside a tmux session — falling back to: omp $WT_PATH"
+  omp "$WT_PATH"
+  exit 0
+fi
+
+# New window named after the worktree
+tmux new-window -c "$WT_PATH" -n "$WT_NAME"
+
+# Split: top 60% / bottom 40%
+tmux split-window -v -p 40 -c "$WT_PATH"
+
+# Top pane → open editor
+tmux select-pane -t 0
+tmux send-keys "omp" Enter
+
+# Bottom pane → split horizontally
+tmux select-pane -t 1
+tmux split-window -h -c "$WT_PATH"
+
+# Bottom-right → frontend
+tmux send-keys "cd '$WT_PATH/frontend' && clear" Enter
+
+# Bottom-left → backend
+tmux select-pane -t 1
+tmux send-keys "cd '$WT_PATH/backend' && mix compile && clear" Enter
+
+# Return focus to editor
+tmux select-pane -t 0
+```
+
+> **Tip:** The hook must be executable (`chmod +x`). If it exists but is not executable, the manager will attempt `chmod +x` automatically and warn if that fails.
 
 ---
 
