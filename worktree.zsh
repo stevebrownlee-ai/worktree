@@ -78,8 +78,14 @@ _wt_parse_projects() {
   local conf="${PROJECTS_CONF:-$HOME/.config/worktree/projects.conf}"
 
   if [[ ! -f "$conf" ]]; then
-    echo "${_wt_red}✗${_wt_reset} Project registry not found: ${_wt_dim}$conf${_wt_reset}"
-    return 1
+    mkdir -p "$(dirname "$conf")"
+    touch "$conf"
+    _WT_PROJECT_NAMES=()
+    _WT_REPO_DIRS=()
+    _WT_WORKTREES_DIRS=()
+    _WT_POST_CREATE_HOOKS=()
+    _WT_PRE_DELETE_HOOKS=()
+    return 0
   fi
 
   _WT_PROJECT_NAMES=()
@@ -126,11 +132,6 @@ _wt_parse_projects() {
     _WT_PRE_DELETE_HOOKS+=("$pre_delete_hook")
   done < "$conf"
 
-  if (( ${#_WT_PROJECT_NAMES[@]} == 0 )); then
-    echo "${_wt_red}✗${_wt_reset} No valid projects found in ${_wt_dim}$conf${_wt_reset}"
-    return 1
-  fi
-
   return 0
 }
 
@@ -139,8 +140,11 @@ _wt_select_project() {
   local count=${#_WT_PROJECT_NAMES[@]}
 
   if (( count == 0 )); then
-    # No projects yet — go straight to registration
-    echo "${_wt_red}✗${_wt_reset} No projects registered yet."
+    clear
+    echo ""
+    _wt_banner "${_wt_bold}${_wt_cyan}Welcome to Git Worktree Manager${_wt_reset}"
+    echo ""
+    echo "  No projects configured yet. Let's set one up now."
     echo ""
     register_project
     return $?
@@ -686,6 +690,7 @@ merge_main_into_worktree() {
 new_worktree() {
   local ORIGINAL_DIR="$(pwd)"
 
+  git fetch --all --prune
   clear
   echo ""
   local _menu_title="  ${_wt_bold}${_wt_cyan}Git Worktree Creator${_wt_reset}  "

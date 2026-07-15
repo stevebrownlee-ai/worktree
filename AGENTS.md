@@ -8,6 +8,18 @@ Be maximally terse. One sentence for overviews, one word for status. No filler, 
 
 Zsh-based interactive CLI for managing git worktrees across multiple repositories.
 
+## Memory & Project Context
+
+This project uses the `engrams` CLI (local SQLite knowledge base; JSON output) to persist decisions, conventions, and progress.
+
+### Core Rules
+
+- **Interactive Queries:** Run `engrams prime` at startup (context priming only; do not start `active_context.focus` without an explicit task prompt). Run `engrams relevant <paths>` (or `--staged`) before editing, and `engrams query "<topic>"` before implementing.
+- **CLI-Only:** ALWAYS query/write via CLI. Never read/grep `engrams_export/`, run `engrams export`, or access the SQLite DB directly.
+- **Log Decisions & Progress:** Log design choices via `engrams decision log` (and link/supersede via `engrams link add` or `supersede`). Track progress with `engrams progress log --status <status> --description "..."`.
+- **Session End:** Before concluding, log all decisions, link them, set status to `Done`, and run `engrams active-context update --content '<json>'`.
+- **TTS Vocalization:** If prompt is "Talk to me" or asks for status: query last 48h progress via CLI, generate a status summary (simple for "Talk to me", technical for "Explain {x}"), render with `tts` tool to a wav file in `/tmp` (e.g. `/tmp/status.wav`), play on macOS (e.g. `afplay /tmp/status.wav`), and confirm.
+
 ## File Map
 
 | File | Purpose |
