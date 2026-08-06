@@ -852,8 +852,7 @@ delete_worktree() {
   _wt_box_line $_bw "  ${_wt_dim}q) Back${_wt_reset}"
   _wt_box_bottom $_bw
   printf "${_wt_cyan}Enter choice:${_wt_reset} "
-  read -k 1 selection
-  echo ""
+  read selection
 
   if [[ "$selection" == "q" || "$selection" == "Q" ]]; then
     echo "${_wt_dim}Aborted.${_wt_reset}"
@@ -927,8 +926,7 @@ open_worktree() {
   echo ""
 
   printf "${_wt_cyan}Enter the number of the worktree to open (or 'q' to quit):${_wt_reset} "
-  read -k 1 selection
-  echo ""
+  read selection
 
   if [[ "$selection" == "q" || "$selection" == "Q" ]]; then
     echo "${_wt_dim}Aborted.${_wt_reset}"
