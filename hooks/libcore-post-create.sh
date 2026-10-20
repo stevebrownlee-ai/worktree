@@ -33,10 +33,9 @@ done
 
 # ── Config / small files: copy so each worktree can diverge independently ──
 COPY_ARTIFACTS=(
-  .pilot
   frontend/.env.local
   backend/config/dev.secret.exs
-  AGENTS.md
+  .env
 )
 for entry in "${COPY_ARTIFACTS[@]}"; do
   src="$REPO_DIR/$entry"

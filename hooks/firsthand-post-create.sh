@@ -33,14 +33,9 @@ done
 
 # ── Config / small files: copy so each worktree can diverge independently ──
 COPY_ARTIFACTS=(
-  .agents/workflows
-  .agents/protocols
-  .agents/skills
-  .pilot
   .env.prd
   frontend/.env.local
   backend/config/dev.secret.exs
-  AGENTS.md
 )
 
 for entry in "${COPY_ARTIFACTS[@]}"; do

@@ -306,6 +306,29 @@ _wt_run_pre_delete_hook() {
   return 0
 }
 
+# ── Fetch origin/main and fast-forward local main ──────────────────────────────
+# Ensures local main in WT_REPO_DIR exactly matches origin/main.
+# Fails (non-zero) rather than silently diverging or creating a merge commit.
+_wt_update_local_main() {
+  echo "${_wt_cyan}→${_wt_reset} Updating local main from origin in ${_wt_dim}$WT_REPO_DIR${_wt_reset}..."
+  git -C "$WT_REPO_DIR" fetch origin main
+  if [[ $? -ne 0 ]]; then
+    echo "${_wt_red}✗${_wt_reset} Failed to fetch origin/main."
+    return 1
+  fi
+  git -C "$WT_REPO_DIR" checkout main
+  if [[ $? -ne 0 ]]; then
+    echo "${_wt_red}✗${_wt_reset} Failed to checkout main."
+    return 1
+  fi
+  git -C "$WT_REPO_DIR" merge --ff-only origin/main
+  if [[ $? -ne 0 ]]; then
+    echo "${_wt_red}✗${_wt_reset} Local main has diverged from origin/main and could not be fast-forwarded."
+    return 1
+  fi
+  return 0
+}
+
 # ── Register a new project ─────────────────────────────────────────────────────
 register_project() {
   local conf="${PROJECTS_CONF:-$HOME/.config/worktree/projects.conf}"
@@ -652,12 +675,7 @@ merge_main_into_worktree() {
 
   clear
   echo ""
-  echo "${_wt_cyan}→${_wt_reset} Pulling latest main in ${_wt_dim}$WT_REPO_DIR${_wt_reset}..."
-  git -C "$WT_REPO_DIR" checkout main && git -C "$WT_REPO_DIR" pull origin main
-  if [[ $? -ne 0 ]]; then
-    echo "${_wt_red}✗${_wt_reset} Failed to pull main. Aborting."
-    return 1
-  fi
+  _wt_update_local_main || return 1
 
   echo ""
   echo "${_wt_cyan}→${_wt_reset} Merging ${_wt_bold}main${_wt_reset} into ${_wt_bold}'$target_branch'${_wt_reset} in worktree at ${_wt_dim}$target${_wt_reset}..."
@@ -690,7 +708,8 @@ merge_main_into_worktree() {
 new_worktree() {
   local ORIGINAL_DIR="$(pwd)"
 
-  git fetch --all --prune
+  _wt_update_local_main || return 1
+  git -C "$WT_REPO_DIR" fetch --all --prune
   clear
   echo ""
   local _menu_title="  ${_wt_bold}${_wt_cyan}Git Worktree Creator${_wt_reset}  "
@@ -877,7 +896,16 @@ delete_worktree() {
 
   # Run pre-delete hook (blocking)
   echo ""
-  _wt_run_pre_delete_hook "$WT_PRE_DELETE_HOOK" "$target" "$WT_REPO_DIR" || return 1
+  if ! _wt_run_pre_delete_hook "$WT_PRE_DELETE_HOOK" "$target" "$WT_REPO_DIR"; then
+    printf "${_wt_yellow}Force delete anyway, bypassing pre-delete checks?${_wt_reset} [y/N]: "
+    read -k 1 force_confirm
+    echo ""
+    if [[ "$force_confirm" != "y" && "$force_confirm" != "Y" ]]; then
+      echo "${_wt_dim}Aborted.${_wt_reset}"
+      return 1
+    fi
+    echo "${_wt_yellow}⚠${_wt_reset} Overriding pre-delete checks, forcing deletion."
+  fi
 
   git -C "$WT_REPO_DIR" worktree remove --force "$target"
 
